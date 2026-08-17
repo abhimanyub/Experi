@@ -3,7 +3,12 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { applyConfounderFlags, isInConfounderWindow } from '../domain/confounders';
 import { abandonExperiment, cloneExperiment, completeExperiment, startExperiment } from '../domain/lifecycle';
-import { currentPhase, shouldAutoTransition, transitionToNext } from '../domain/phase-engine';
+import {
+  currentPhase,
+  phaseForTimestamp,
+  shouldAutoTransition,
+  transitionToNext,
+} from '../domain/phase-engine';
 import {
   Confounder,
   Experiment,
@@ -117,29 +122,37 @@ export async function getRecentObservations(
 
 // ---------- writes ----------
 
-/** Quick-log an observation. Resolves phase from the active phase; flags via confounders. */
+/**
+ * Quick-log an observation. observedAt defaults to now; backdated entries
+ * (before today) resolve their phase from the timestamp and are tagged
+ * backfilled — shown subtly, trust the user but leave a trace (spec §3.2).
+ */
 export async function logObservation(params: {
   metricId: string;
   value: number;
   note?: string;
   now: number;
+  observedAt?: number;
 }): Promise<Observation> {
   const metric = await getMetric(params.metricId);
   if (!metric) throw new Error('Metric not found');
   const phases = await getExperimentPhases(metric.experimentId);
-  const active = currentPhase(phases);
-  if (!active) throw new Error('No active phase — cannot log');
+  const observedAt = params.observedAt ?? params.now;
+  const startOfToday = new Date(params.now).setHours(0, 0, 0, 0);
+  const backfilled = observedAt < startOfToday;
+  const phase = backfilled ? phaseForTimestamp(phases, observedAt) : currentPhase(phases);
+  if (!phase) throw new Error('No phase covers that time — cannot log');
   const confounders = await getConfounders(metric.experimentId);
 
   const obs: Observation = {
     id: newId(),
     metricId: params.metricId,
-    phaseId: active.id,
+    phaseId: phase.id,
     value: params.value,
     note: params.note ?? null,
-    observedAt: params.now,
-    backfilled: false,
-    flagged: isInConfounderWindow(params.now, confounders),
+    observedAt,
+    backfilled,
+    flagged: isInConfounderWindow(observedAt, confounders),
   };
   await db.insert(t.observations).values(obs);
   return obs;

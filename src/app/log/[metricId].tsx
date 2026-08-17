@@ -8,6 +8,7 @@ import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput } from
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ChipRow } from '@/components/wizard/chips';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { getMetric, logObservation } from '@/db/repo';
 import { CurrencyConfig, DurationConfig, NumericConfig } from '@/domain/types';
@@ -20,6 +21,7 @@ export default function LogSheet() {
   const queryClient = useQueryClient();
   const [raw, setRaw] = useState('');
   const [note, setNote] = useState('');
+  const [when, setWhen] = useState<'now' | 'yesterday'>('now');
 
   const { data: metric } = useQuery({
     queryKey: ['metric', metricId],
@@ -27,8 +29,16 @@ export default function LogSheet() {
   });
 
   const save = useMutation({
-    mutationFn: (value: number) =>
-      logObservation({ metricId, value, note: note.trim() || undefined, now: Date.now() }),
+    mutationFn: (value: number) => {
+      const now = Date.now();
+      return logObservation({
+        metricId,
+        value,
+        note: note.trim() || undefined,
+        now,
+        observedAt: when === 'yesterday' ? now - 24 * 60 * 60 * 1000 : now,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
       router.back();
@@ -79,6 +89,19 @@ export default function LogSheet() {
             multiline
           />
         </ThemedView>
+        <ChipRow
+          options={[
+            { value: 'now', label: 'Now' },
+            { value: 'yesterday', label: 'Yesterday (backfill)' },
+          ]}
+          value={when}
+          onChange={setWhen}
+        />
+        {when === 'yesterday' && (
+          <ThemedText type="small" style={{ color: colors.textSecondary }}>
+            Backfilled entries are tagged — trust yourself, but leave a trace.
+          </ThemedText>
+        )}
         <Pressable
           disabled={!valid || save.isPending}
           onPress={() => save.mutate(value)}

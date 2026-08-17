@@ -4,7 +4,6 @@ import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Text, useColorScheme, View } from 'react-native';
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { useDbReady } from '@/db/use-db-ready';
 
 SplashScreen.preventAutoHideAsync();
@@ -27,6 +26,10 @@ export default function RootLayout() {
   const { success, error } = useDbReady();
   useNotificationDeepLink();
 
+  useEffect(() => {
+    if (success || error) SplashScreen.hideAsync();
+  }, [success, error]);
+
   if (error) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -39,7 +42,6 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AnimatedSplashOverlay />
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="new" options={{ presentation: 'modal', title: 'New experiment' }} />
