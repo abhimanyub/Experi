@@ -12,7 +12,6 @@ import {
   Observation,
   Phase,
 } from '../domain/types';
-import { ExperimentTemplate } from '../templates';
 import { newId } from '../lib/ids';
 import { db } from './client';
 import * as t from './schema';
@@ -182,21 +181,39 @@ export async function addConfounder(params: {
   }
 }
 
-/** Create + start an experiment from a template (mini flow; full wizard is M3). */
-export async function createFromTemplate(params: {
-  template: ExperimentTemplate;
+export interface NewMetricInput {
+  name: string;
+  type: Metric['type'];
+  config: Metric['config'];
+  schedule: MetricSchedule;
+  direction: Metric['direction'];
+}
+
+export interface NewPhaseInput {
+  type: Phase['type'];
+  label: string;
+  plannedDays: number;
+}
+
+/** Create an experiment from wizard output. Starts immediately unless saved as draft. */
+export async function createExperiment(params: {
   title: string;
   hypothesis: string;
+  archetype: Experiment['archetype'];
+  metrics: NewMetricInput[];
+  phases: NewPhaseInput[];
   now: number;
+  start: boolean;
+  skipBaseline?: boolean;
 }): Promise<string> {
-  const { template, title, hypothesis, now } = params;
+  const { title, hypothesis, archetype, now } = params;
   const experimentId = newId();
 
   const experiment: Experiment = {
     id: experimentId,
     title,
     hypothesis,
-    archetype: template.archetype,
+    archetype,
     status: 'draft',
     createdAt: now,
     startedAt: null,
@@ -205,34 +222,106 @@ export async function createFromTemplate(params: {
     baselineSkipped: false,
     abandonReason: null,
   };
-  const phases: Phase[] = template.phases
-    .filter((p) => !p.optional)
-    .map((p, i) => ({
-      id: newId(),
-      experimentId,
-      type: p.type,
-      label: p.label,
-      sequence: i,
-      plannedDays: p.plannedDays,
-      startedAt: null,
-      endedAt: null,
-    }));
-  const metrics: Metric[] = template.metrics.map((m) => ({
+  const phases: Phase[] = params.phases.map((p, i) => ({
     id: newId(),
     experimentId,
-    name: m.name,
-    type: m.type,
-    config: m.config as Metric['config'],
-    schedule: m.schedule,
-    direction: m.direction,
+    type: p.type,
+    label: p.label,
+    sequence: i,
+    plannedDays: p.plannedDays,
+    startedAt: null,
+    endedAt: null,
+  }));
+  const metrics: Metric[] = params.metrics.map((m) => ({
+    id: newId(),
+    experimentId,
+    ...m,
   }));
 
-  const started = startExperiment(experiment, phases, now);
-
-  await db.insert(t.experiments).values(started.experiment);
-  if (started.phases.updated.length > 0) await db.insert(t.phases).values(started.phases.updated);
+  if (params.start) {
+    const started = startExperiment(experiment, phases, now, {
+      skipBaseline: params.skipBaseline,
+    });
+    await db.insert(t.experiments).values(started.experiment);
+    await db.insert(t.phases).values(started.phases.updated);
+  } else {
+    await db.insert(t.experiments).values(experiment);
+    if (phases.length > 0) await db.insert(t.phases).values(phases);
+  }
   if (metrics.length > 0) await db.insert(t.metrics).values(metrics);
   return experimentId;
+}
+
+export interface DraftBundle {
+  experiment: Experiment;
+  phases: Phase[];
+  metrics: Metric[];
+}
+
+export async function getDraftExperiments(): Promise<DraftBundle[]> {
+  const drafts = (await db
+    .select()
+    .from(t.experiments)
+    .where(eq(t.experiments.status, 'draft'))
+    .orderBy(desc(t.experiments.createdAt))) as Experiment[];
+  const out: DraftBundle[] = [];
+  for (const experiment of drafts) {
+    out.push({
+      experiment,
+      phases: await getExperimentPhases(experiment.id),
+      metrics: (
+        await db.select().from(t.metrics).where(eq(t.metrics.experimentId, experiment.id))
+      ).map(metricFromRow),
+    });
+  }
+  return out;
+}
+
+/** Start a saved draft. skipBaseline records the skip and deletes baseline phases. */
+export async function startDraft(
+  experimentId: string,
+  now: number,
+  opts: { skipBaseline?: boolean } = {}
+): Promise<void> {
+  const rows = await db
+    .select()
+    .from(t.experiments)
+    .where(eq(t.experiments.id, experimentId))
+    .limit(1);
+  const experiment = rows[0] as Experiment | undefined;
+  if (!experiment) throw new Error('Experiment not found');
+  const phases = await getExperimentPhases(experimentId);
+
+  const started = startExperiment(experiment, phases, now, { skipBaseline: opts.skipBaseline });
+  const keptIds = new Set(started.phases.updated.map((p) => p.id));
+  for (const p of phases) {
+    if (!keptIds.has(p.id)) {
+      await db.delete(t.phases).where(eq(t.phases.id, p.id));
+    }
+  }
+  for (const p of started.phases.updated) {
+    await db
+      .update(t.phases)
+      .set({ startedAt: p.startedAt, endedAt: p.endedAt })
+      .where(eq(t.phases.id, p.id));
+  }
+  const e = started.experiment;
+  await db
+    .update(t.experiments)
+    .set({ status: e.status, startedAt: e.startedAt, baselineSkipped: e.baselineSkipped })
+    .where(eq(t.experiments.id, experimentId));
+}
+
+/** Delete a draft outright (spec §4: drafts may be deleted). */
+export async function deleteDraft(experimentId: string): Promise<void> {
+  const rows = await db
+    .select()
+    .from(t.experiments)
+    .where(eq(t.experiments.id, experimentId))
+    .limit(1);
+  if (!rows[0]) return;
+  if (rows[0].status !== 'draft') throw new Error('Only drafts can be deleted');
+  await db.delete(t.experiments).where(eq(t.experiments.id, experimentId));
 }
 
 /** Auto-advance any active phases past their planned duration. Call on app foreground. */

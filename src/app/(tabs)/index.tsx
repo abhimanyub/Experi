@@ -1,14 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExperimentCard } from '@/components/experiment-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Colors, MaxContentWidth, Spacing } from '@/constants/theme';
-import { getActiveExperiments, logObservation, syncPhaseTransitions } from '@/db/repo';
+import {
+  deleteDraft,
+  getActiveExperiments,
+  getDraftExperiments,
+  logObservation,
+  startDraft,
+  syncPhaseTransitions,
+} from '@/db/repo';
 import { ensureNotificationSetup } from '@/lib/notifications';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -30,11 +37,51 @@ export default function TodayScreen() {
     queryFn: () => getActiveExperiments(Date.now()),
   });
 
+  const { data: drafts = [] } = useQuery({
+    queryKey: ['draft-experiments'],
+    queryFn: getDraftExperiments,
+  });
+
   const logMutation = useMutation({
     mutationFn: (params: { metricId: string; value: number }) =>
       logObservation({ ...params, now: Date.now() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['active-experiments'] }),
   });
+
+  const refreshBoth = () => {
+    queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
+    queryClient.invalidateQueries({ queryKey: ['draft-experiments'] });
+  };
+
+  const startDraftMutation = useMutation({
+    mutationFn: (params: { id: string; skipBaseline: boolean }) =>
+      startDraft(params.id, Date.now(), { skipBaseline: params.skipBaseline }),
+    onSuccess: refreshBoth,
+  });
+
+  const deleteDraftMutation = useMutation({
+    mutationFn: (id: string) => deleteDraft(id),
+    onSuccess: refreshBoth,
+  });
+
+  const onStartDraft = (id: string, hasBaseline: boolean) => {
+    if (!hasBaseline) {
+      startDraftMutation.mutate({ id, skipBaseline: true });
+      return;
+    }
+    Alert.alert('Start experiment', 'Begin with the baseline phase?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Skip baseline',
+        style: 'destructive',
+        onPress: () => startDraftMutation.mutate({ id, skipBaseline: true }),
+      },
+      {
+        text: 'Start baseline',
+        onPress: () => startDraftMutation.mutate({ id, skipBaseline: false }),
+      },
+    ]);
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -70,6 +117,54 @@ export default function TodayScreen() {
               onLog={(metricId, value) => logMutation.mutate({ metricId, value })}
             />
           ))}
+
+          {drafts.length > 0 && (
+            <>
+              <ThemedText type="smallBold" style={{ color: colors.textSecondary }}>
+                Drafts
+              </ThemedText>
+              {drafts.map((d) => (
+                <ThemedView
+                  key={d.experiment.id}
+                  type="backgroundElement"
+                  style={styles.draftCard}>
+                  <View style={{ flexShrink: 1, gap: Spacing.half }}>
+                    <ThemedText type="smallBold">{d.experiment.title}</ThemedText>
+                    <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                      {d.phases.map((p) => `${p.label} ${p.plannedDays}d`).join(' → ')}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.draftActions}>
+                    <Pressable
+                      onPress={() =>
+                        onStartDraft(
+                          d.experiment.id,
+                          d.phases.some((p) => p.type === 'baseline')
+                        )
+                      }
+                      style={[styles.draftButton, { backgroundColor: colors.backgroundSelected }]}>
+                      <ThemedText type="smallBold">Start</ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert('Delete draft?', d.experiment.title, [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: () => deleteDraftMutation.mutate(d.experiment.id),
+                          },
+                        ])
+                      }>
+                      <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                        Delete
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                </ThemedView>
+              ))}
+            </>
+          )}
 
           <Pressable
             onPress={() => router.push('/new' as never)}
@@ -120,5 +215,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
     borderRadius: Spacing.four,
+  },
+  draftCard: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  draftActions: {
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  draftButton: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    borderRadius: Spacing.two,
   },
 });
