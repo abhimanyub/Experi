@@ -45,7 +45,16 @@ export default function RootLayout() {
           <Stack.Screen name="new" options={{ presentation: 'modal', title: 'New experiment' }} />
           <Stack.Screen
             name="log/[metricId]"
-            options={{ presentation: 'modal', title: 'Log observation' }}
+            options={{ presentation: 'formSheet', sheetAllowedDetents: [0.5], title: 'Log' }}
+          />
+          <Stack.Screen name="experiment/[id]" options={{ title: 'Experiment' }} />
+          <Stack.Screen
+            name="confounder/[experimentId]"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.6],
+              title: 'Something happened',
+            }}
           />
         </Stack>
       </ThemeProvider>

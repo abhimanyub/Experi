@@ -1,6 +1,7 @@
 // Active experiment card on Today: title, phase progress, quick-log rows.
 
-import { StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { QuickLogRow } from '@/components/quick-log';
 import { ThemedText } from '@/components/themed-text';
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function ExperimentCard({ bundle, now, onLog }: Props) {
+  const router = useRouter();
   const colors = useTheme();
   const { experiment, activePhase, metrics, todayCounts } = bundle;
 
@@ -26,10 +28,12 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
-      <ThemedText type="smallBold">{experiment.title}</ThemedText>
-      <ThemedText type="small" style={{ color: colors.textSecondary }}>
-        {phaseInfo}
-      </ThemedText>
+      <Pressable onPress={() => router.push(`/experiment/${experiment.id}` as never)}>
+        <ThemedText type="smallBold">{experiment.title} ›</ThemedText>
+        <ThemedText type="small" style={{ color: colors.textSecondary }}>
+          {phaseInfo}
+        </ThemedText>
+      </Pressable>
       <View style={styles.rows}>
         {metrics.map((m) => (
           <QuickLogRow

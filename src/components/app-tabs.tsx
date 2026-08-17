@@ -15,6 +15,7 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
+          sf={{ default: 'checklist.unchecked', selected: 'checklist.checked' }}
           src={require('@/assets/images/tabIcons/home.png')}
           renderingMode="template"
         />
@@ -23,6 +24,7 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="history">
         <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
+          sf={{ default: 'archivebox', selected: 'archivebox.fill' }}
           src={require('@/assets/images/tabIcons/explore.png')}
           renderingMode="template"
         />

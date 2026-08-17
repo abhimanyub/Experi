@@ -2,7 +2,7 @@
 
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { applyConfounderFlags, isInConfounderWindow } from '../domain/confounders';
-import { startExperiment } from '../domain/lifecycle';
+import { abandonExperiment, startExperiment } from '../domain/lifecycle';
 import { currentPhase, shouldAutoTransition, transitionToNext } from '../domain/phase-engine';
 import {
   Confounder,
@@ -322,6 +322,84 @@ export async function deleteDraft(experimentId: string): Promise<void> {
   if (!rows[0]) return;
   if (rows[0].status !== 'draft') throw new Error('Only drafts can be deleted');
   await db.delete(t.experiments).where(eq(t.experiments.id, experimentId));
+}
+
+export interface ExperimentDetail {
+  experiment: Experiment;
+  phases: Phase[];
+  metrics: Metric[];
+  observations: Observation[];
+  confounders: Confounder[];
+}
+
+export async function getExperimentDetail(experimentId: string): Promise<ExperimentDetail | null> {
+  const rows = await db
+    .select()
+    .from(t.experiments)
+    .where(eq(t.experiments.id, experimentId))
+    .limit(1);
+  const experiment = rows[0] as Experiment | undefined;
+  if (!experiment) return null;
+  const metrics = (
+    await db.select().from(t.metrics).where(eq(t.metrics.experimentId, experimentId))
+  ).map(metricFromRow);
+  const metricIds = metrics.map((m) => m.id);
+  const observations =
+    metricIds.length > 0
+      ? ((await db
+          .select()
+          .from(t.observations)
+          .where(inArray(t.observations.metricId, metricIds))
+          .orderBy(asc(t.observations.observedAt))) as Observation[])
+      : [];
+  return {
+    experiment,
+    phases: await getExperimentPhases(experimentId),
+    metrics,
+    observations,
+    confounders: await getConfounders(experimentId),
+  };
+}
+
+/** Close an open-ended confounder window. */
+export async function closeConfounder(confounderId: string, endsAt: number): Promise<void> {
+  await db.update(t.confounders).set({ endsAt }).where(eq(t.confounders.id, confounderId));
+}
+
+export async function deleteObservation(observationId: string): Promise<void> {
+  await db.delete(t.observations).where(eq(t.observations.id, observationId));
+}
+
+/** End the current phase before its planned duration (user confirmed). */
+export async function endPhaseEarly(experimentId: string, now: number): Promise<void> {
+  const phases = await getExperimentPhases(experimentId);
+  const r = transitionToNext(phases, now, { confirmEarly: true });
+  for (const p of r.updated) {
+    await db
+      .update(t.phases)
+      .set({ startedAt: p.startedAt, endedAt: p.endedAt })
+      .where(eq(t.phases.id, p.id));
+  }
+}
+
+/** Abandon an active experiment (reason required — spec §4). */
+export async function abandonExperimentById(
+  experimentId: string,
+  now: number,
+  reason: string
+): Promise<void> {
+  const rows = await db
+    .select()
+    .from(t.experiments)
+    .where(eq(t.experiments.id, experimentId))
+    .limit(1);
+  const experiment = rows[0] as Experiment | undefined;
+  if (!experiment) throw new Error('Experiment not found');
+  const updated = abandonExperiment(experiment, now, reason);
+  await db
+    .update(t.experiments)
+    .set({ status: updated.status, endedAt: updated.endedAt, abandonReason: updated.abandonReason })
+    .where(eq(t.experiments.id, experimentId));
 }
 
 /** Auto-advance any active phases past their planned duration. Call on app foreground. */
