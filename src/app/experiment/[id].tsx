@@ -16,9 +16,11 @@ import {
   deleteObservation,
   endPhaseEarly,
   getExperimentDetail,
+  getVerdict,
 } from '@/db/repo';
 import { actualDays, currentPhase, plannedEnd } from '@/domain/phase-engine';
 import { compareMetricAcrossPhases, comparisonValue, contextLine } from '@/domain/verdict-math';
+import { confirmAction } from '@/lib/confirm';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function ExperimentDetailScreen() {
@@ -33,6 +35,10 @@ export default function ExperimentDetailScreen() {
   const { data: detail } = useQuery({
     queryKey: ['experiment-detail', id],
     queryFn: () => getExperimentDetail(id),
+  });
+  const { data: verdict } = useQuery({
+    queryKey: ['verdict', id],
+    queryFn: () => getVerdict(id),
   });
 
   const refresh = () => {
@@ -64,19 +70,18 @@ export default function ExperimentDetailScreen() {
   const active = currentPhase(phases);
   const chartWidth = Math.min(windowWidth, MaxContentWidth) - Spacing.three * 2 - Spacing.three * 2;
 
-  const confirmEndEarly = () => {
+  const confirmEndEarly = async () => {
     if (!active) return;
     const daysIn = actualDays(active, now);
     const end = plannedEnd(active);
     const daysLeft = end ? Math.ceil((end - now) / (24 * 60 * 60 * 1000)) : 0;
-    Alert.alert(
-      `End "${active.label}" early?`,
-      `${daysIn} day(s) in, ${daysLeft} planned day(s) remaining. Actual duration is recorded — short phases weaken the verdict.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'End phase', style: 'destructive', onPress: () => endEarly.mutate() },
-      ]
-    );
+    const ok = await confirmAction({
+      title: `End "${active.label}" early?`,
+      message: `${daysIn} day(s) in, ${daysLeft} planned day(s) remaining. Actual duration is recorded — short phases weaken the verdict.`,
+      confirmText: 'End phase',
+      destructive: true,
+    });
+    if (ok) endEarly.mutate();
   };
 
   const confirmAbandon = () => {
@@ -116,6 +121,29 @@ export default function ExperimentDetailScreen() {
             </ThemedText>
           )}
         </ThemedView>
+
+        {/* verdict (completed experiments) */}
+        {verdict && (
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              Verdict — {verdict.outcome}
+              {verdict.willAdopt === true && ' · adopted'}
+              {verdict.willAdopt === false && ' · dropped'}
+            </ThemedText>
+            <ThemedText type="default">{verdict.conclusion}</ThemedText>
+          </ThemedView>
+        )}
+
+        {/* verdict entry (all phases done, still active) */}
+        {experiment.status === 'active' && !active && (
+          <Pressable
+            onPress={() => router.push(`/verdict/${experiment.id}` as never)}
+            style={[styles.verdictButton, { backgroundColor: colors.success }]}>
+            <ThemedText type="smallBold" style={{ color: colors.onTint }}>
+              Write the verdict
+            </ThemedText>
+          </Pressable>
+        )}
 
         {/* phase timeline */}
         <ThemedView type="backgroundElement" style={styles.card}>
@@ -233,16 +261,14 @@ export default function ExperimentDetailScreen() {
                 </ThemedText>
               </View>
               <Pressable
-                onPress={() =>
-                  Alert.alert('Delete observation?', '', [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Delete',
-                      style: 'destructive',
-                      onPress: () => removeObservation.mutate(o.id),
-                    },
-                  ])
-                }>
+                onPress={async () => {
+                  const ok = await confirmAction({
+                    title: 'Delete observation?',
+                    confirmText: 'Delete',
+                    destructive: true,
+                  });
+                  if (ok) removeObservation.mutate(o.id);
+                }}>
                 <ThemedText type="small" style={{ color: colors.textSecondary }}>
                   ✕
                 </ThemedText>
@@ -310,5 +336,10 @@ const styles = StyleSheet.create({
   abandonButton: {
     alignItems: 'center',
     paddingVertical: Spacing.three,
+  },
+  verdictButton: {
+    alignItems: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.three,
   },
 });

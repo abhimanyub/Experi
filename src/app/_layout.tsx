@@ -57,6 +57,10 @@ export default function RootLayout() {
             options={{ presentation: 'modal', title: 'Draft with Claude' }}
           />
           <Stack.Screen
+            name="verdict/[experimentId]"
+            options={{ presentation: 'fullScreenModal', title: 'Verdict' }}
+          />
+          <Stack.Screen
             name="confounder/[experimentId]"
             options={{
               presentation: 'formSheet',

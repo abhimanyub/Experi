@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExperimentCard } from '@/components/experiment-card';
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     gap: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.four,
-    paddingTop: Spacing.three,
+    paddingTop: Platform.OS === 'web' ? 72 : Spacing.three, // clear the floating web tab bar
   },
   heading: {
     marginBottom: Spacing.one,

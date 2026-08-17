@@ -53,7 +53,20 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
         </View>
       </Pressable>
 
-      {!allDone && scheduled.length > 0 && (
+      {!activePhase && (
+        <Pressable
+          onPress={() => router.push(`/verdict/${experiment.id}` as never)}
+          style={({ pressed }) => [
+            styles.checkinButton,
+            { backgroundColor: colors.success, opacity: pressed ? 0.85 : 1 },
+          ]}>
+          <ThemedText type="smallBold" style={{ color: colors.onTint }}>
+            Write the verdict
+          </ThemedText>
+        </Pressable>
+      )}
+
+      {activePhase && !allDone && scheduled.length > 0 && (
         <Pressable
           onPress={() => router.push(`/checkin/${experiment.id}` as never)}
           style={({ pressed }) => [

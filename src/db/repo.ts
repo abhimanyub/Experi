@@ -2,7 +2,7 @@
 
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { applyConfounderFlags, isInConfounderWindow } from '../domain/confounders';
-import { abandonExperiment, startExperiment } from '../domain/lifecycle';
+import { abandonExperiment, cloneExperiment, completeExperiment, startExperiment } from '../domain/lifecycle';
 import { currentPhase, shouldAutoTransition, transitionToNext } from '../domain/phase-engine';
 import {
   Confounder,
@@ -11,6 +11,7 @@ import {
   MetricSchedule,
   Observation,
   Phase,
+  Verdict,
 } from '../domain/types';
 import { newId } from '../lib/ids';
 import { db } from './client';
@@ -400,6 +401,116 @@ export async function abandonExperimentById(
     .update(t.experiments)
     .set({ status: updated.status, endedAt: updated.endedAt, abandonReason: updated.abandonReason })
     .where(eq(t.experiments.id, experimentId));
+}
+
+/** Save the verdict and complete the experiment (spec §4.4 — verdict is mandatory). */
+export async function saveVerdict(params: {
+  experimentId: string;
+  outcome: Verdict['outcome'];
+  conclusion: string;
+  willAdopt: boolean | null;
+  now: number;
+}): Promise<void> {
+  const rows = await db
+    .select()
+    .from(t.experiments)
+    .where(eq(t.experiments.id, params.experimentId))
+    .limit(1);
+  const experiment = rows[0] as Experiment | undefined;
+  if (!experiment) throw new Error('Experiment not found');
+
+  const verdict: Verdict = {
+    id: newId(),
+    experimentId: params.experimentId,
+    outcome: params.outcome,
+    conclusion: params.conclusion,
+    willAdopt: params.willAdopt,
+    createdAt: params.now,
+  };
+  const completed = completeExperiment(experiment, verdict, params.now);
+  await db.insert(t.verdicts).values(verdict);
+  await db
+    .update(t.experiments)
+    .set({ status: completed.status, endedAt: completed.endedAt, verdictId: completed.verdictId })
+    .where(eq(t.experiments.id, params.experimentId));
+}
+
+export interface HistoryEntry {
+  experiment: Experiment;
+  verdict: Verdict | null;
+}
+
+export async function getHistory(): Promise<HistoryEntry[]> {
+  const experiments = (await db
+    .select()
+    .from(t.experiments)
+    .where(inArray(t.experiments.status, ['completed', 'abandoned']))
+    .orderBy(desc(t.experiments.endedAt))) as Experiment[];
+  const out: HistoryEntry[] = [];
+  for (const experiment of experiments) {
+    let verdict: Verdict | null = null;
+    if (experiment.verdictId) {
+      const v = await db
+        .select()
+        .from(t.verdicts)
+        .where(eq(t.verdicts.id, experiment.verdictId))
+        .limit(1);
+      verdict = (v[0] as Verdict) ?? null;
+    }
+    out.push({ experiment, verdict });
+  }
+  return out;
+}
+
+export async function getVerdict(experimentId: string): Promise<Verdict | null> {
+  const rows = await db
+    .select()
+    .from(t.verdicts)
+    .where(eq(t.verdicts.experimentId, experimentId))
+    .limit(1);
+  return (rows[0] as Verdict) ?? null;
+}
+
+/** Clone a finished experiment back to a fresh draft (metrics included). */
+export async function cloneExperimentById(experimentId: string, now: number): Promise<string> {
+  const detail = await getExperimentDetail(experimentId);
+  if (!detail) throw new Error('Experiment not found');
+  const cloned = cloneExperiment(detail.experiment, detail.phases, now, newId);
+  const metrics: Metric[] = detail.metrics.map((m) => ({
+    ...m,
+    id: newId(),
+    experimentId: cloned.experiment.id,
+  }));
+  await db.insert(t.experiments).values(cloned.experiment);
+  if (cloned.phases.length > 0) await db.insert(t.phases).values(cloned.phases);
+  if (metrics.length > 0) await db.insert(t.metrics).values(metrics);
+  return cloned.experiment.id;
+}
+
+/** Full data dump for JSON export (spec: local-first, manual export). */
+export async function exportAllJson(): Promise<string> {
+  const [experiments, phases, metrics, observations, confounders, verdicts] = await Promise.all([
+    db.select().from(t.experiments),
+    db.select().from(t.phases),
+    db.select().from(t.metrics),
+    db.select().from(t.observations),
+    db.select().from(t.confounders),
+    db.select().from(t.verdicts),
+  ]);
+  return JSON.stringify(
+    {
+      exportedAt: new Date().toISOString(),
+      schema: 1,
+      experiments,
+      phases,
+      metrics,
+      observations,
+      confounders,
+      verdicts,
+    },
+    null,
+    2
+  );
 }
 
 /** Auto-advance any active phases past their planned duration. Call on app foreground. */
