@@ -5,16 +5,19 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { Metric } from '../domain/types';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export async function ensureNotificationSetup(): Promise<boolean> {
+  if (Platform.OS === 'web') return false; // local scheduling is native-only in v1
   if (Platform.OS === 'android') {
     // Channel must exist before the Android 13+ permission prompt.
     await Notifications.setNotificationChannelAsync('observations', {
@@ -67,6 +70,7 @@ export async function scheduleMetricReminders(
 export async function rescheduleAll(
   items: { metric: Metric; experimentTitle: string }[]
 ): Promise<void> {
+  if (Platform.OS === 'web') return;
   await Notifications.cancelAllScheduledNotificationsAsync();
   for (const { metric, experimentTitle } of items) {
     await scheduleMetricReminders(metric, experimentTitle);

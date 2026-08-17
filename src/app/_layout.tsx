@@ -4,11 +4,8 @@ import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Text, useColorScheme, View } from 'react-native';
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
-
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { db } from '@/db/client';
-import migrations from '@/db/migrations/migrations';
+import { useDbReady } from '@/db/use-db-ready';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,7 +24,7 @@ function useNotificationDeepLink() {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { success, error } = useMigrations(db, migrations);
+  const { success, error } = useDbReady();
   useNotificationDeepLink();
 
   if (error) {

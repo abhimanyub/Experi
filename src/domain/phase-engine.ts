@@ -35,7 +35,7 @@ export function shouldAutoTransition(phase: Phase, now: number): boolean {
 export function actualDays(phase: Phase, now: number): number {
   if (phase.startedAt === null) return 0;
   const end = phase.endedAt ?? now;
-  return Math.floor((end - phase.startedAt) / DAY_MS);
+  return Math.max(0, Math.floor((end - phase.startedAt) / DAY_MS));
 }
 
 export interface TransitionResult {
