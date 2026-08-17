@@ -65,7 +65,8 @@ export default function HistoryScreen() {
 
           {entries.length === 0 && (
             <ThemedView type="backgroundElement" style={styles.empty}>
-              <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              <ThemedText style={styles.emptyEmoji}>📔</ThemedText>
+              <ThemedText type="small" style={{ color: colors.textSecondary, textAlign: 'center' }}>
                 No finished experiments yet. Every one you complete lands here with its verdict —
                 your personal book of settled debates.
               </ThemedText>
@@ -143,8 +144,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   empty: {
-    borderRadius: Spacing.three,
+    borderRadius: Spacing.four,
     padding: Spacing.four,
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    lineHeight: 60,
   },
   entryCard: {
     borderRadius: Spacing.four,

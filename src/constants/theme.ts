@@ -7,30 +7,36 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+// Lab-notebook palette: warm paper in light mode, warm ink in dark.
+// Interactive tint + success stay from the validated viz palette family.
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#1C1B18',
+    background: '#FBFAF7',
+    backgroundElement: '#F2F0EA',
+    backgroundSelected: '#E7E4DB',
+    textSecondary: '#6B675C',
     tint: '#2a78d6',
     tintSoft: '#E3EEFB',
     onTint: '#ffffff',
     success: '#1baf7a',
     successSoft: '#E0F5EC',
+    warning: '#c98500',
+    warningSoft: '#FBF0DA',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F4F2ED',
+    background: '#121110',
+    backgroundElement: '#211F1C',
+    backgroundSelected: '#2E2B27',
+    textSecondary: '#A8A396',
     tint: '#3987e5',
     tintSoft: '#16283E',
     onTint: '#ffffff',
     success: '#199e70',
     successSoft: '#123227',
+    warning: '#c98500',
+    warningSoft: '#332A16',
   },
 } as const;
 

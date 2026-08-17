@@ -90,12 +90,20 @@ export default function TodayScreen() {
           style={{ alignSelf: 'stretch' }}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>
-          <ThemedText type="title" style={styles.heading}>
-            Today
-          </ThemedText>
+          <View style={styles.heading}>
+            <ThemedText type="title">Today</ThemedText>
+            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              {new Date(now).toLocaleDateString(undefined, {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </ThemedText>
+          </View>
 
           {bundles.length === 0 && !isLoading && (
             <ThemedView type="backgroundElement" style={styles.empty}>
+              <ThemedText style={styles.emptyEmoji}>🧪</ThemedText>
               <ThemedText type="smallBold" style={styles.emptyQuote}>
                 “The first principle is that you must not fool yourself — and you are the easiest
                 person to fool.”
@@ -198,14 +206,21 @@ const styles = StyleSheet.create({
   },
   heading: {
     marginBottom: Spacing.one,
+    gap: Spacing.half,
   },
   empty: {
-    borderRadius: Spacing.three,
+    borderRadius: Spacing.four,
     padding: Spacing.four,
     gap: Spacing.two,
+    alignItems: 'center',
+  },
+  emptyEmoji: {
+    fontSize: 56,
+    lineHeight: 68,
   },
   emptyQuote: {
     fontStyle: 'italic',
+    textAlign: 'center',
   },
   emptyHint: {
     marginTop: Spacing.two,

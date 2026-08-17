@@ -116,8 +116,8 @@ export default function ExperimentDetailScreen() {
           </ThemedText>
           <ThemedText type="default">{experiment.hypothesis}</ThemedText>
           {experiment.baselineSkipped && (
-            <ThemedText type="small" style={{ color: colors.textSecondary }}>
-              ⚠︎ Baseline was skipped — comparisons lack a before-picture.
+            <ThemedText type="small" style={{ color: colors.warning }}>
+              ⚠️ Baseline was skipped — comparisons lack a before-picture.
             </ThemedText>
           )}
         </ThemedView>

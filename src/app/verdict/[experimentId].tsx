@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 
+import { ConfettiBurst } from '@/components/confetti';
 import { DotChart } from '@/components/dot-chart';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -85,6 +86,7 @@ export default function VerdictFlow() {
   if (saved) {
     return (
       <ThemedView style={[styles.container, styles.centerAll]}>
+        <ConfettiBurst />
         <Animated.View entering={ZoomIn.springify()}>
           <View style={[styles.bigBadge, { backgroundColor: colors.success }]}>
             <ThemedText type="title" style={{ color: colors.onTint, fontSize: 40, lineHeight: 48 }}>
@@ -124,9 +126,11 @@ export default function VerdictFlow() {
           <ThemedText type="subtitle">{metric.name}</ThemedText>
 
           {experiment.baselineSkipped && (
-            <ThemedView type="backgroundElement" style={[styles.card, { backgroundColor: colors.tintSoft }]}>
-              <ThemedText type="small">
-                ⚠︎ Baseline was skipped — there is no before-picture. Weigh this comparison
+            <ThemedView
+              type="backgroundElement"
+              style={[styles.card, { backgroundColor: colors.warningSoft }]}>
+              <ThemedText type="small" style={{ color: colors.warning }}>
+                ⚠️ Baseline was skipped — there is no before-picture. Weigh this comparison
                 accordingly.
               </ThemedText>
             </ThemedView>

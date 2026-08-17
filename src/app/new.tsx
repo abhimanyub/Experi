@@ -16,6 +16,7 @@ import {
   NewPhaseInput,
 } from '@/db/repo';
 import { buildAlternatingPhases } from '@/domain/phase-engine';
+import { TEMPLATE_EMOJI } from '@/constants/archetypes';
 import { Archetype, MIN_PHASE_DAYS } from '@/domain/types';
 import { useAiDraftStore } from '@/lib/ai-draft-store';
 import { rescheduleAll } from '@/lib/notifications';
@@ -217,7 +218,9 @@ export default function NewExperimentWizard() {
                       : colors.backgroundElement,
                 },
               ]}>
-              <ThemedText type="smallBold">{tpl.title}</ThemedText>
+              <ThemedText type="smallBold">
+                {TEMPLATE_EMOJI[tpl.key] ?? '🧪'} {tpl.title}
+              </ThemedText>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
                 {tpl.description} · e.g. {tpl.example}
               </ThemedText>

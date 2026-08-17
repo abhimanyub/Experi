@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
 
+import { ConfettiBurst } from '@/components/confetti';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -81,6 +82,7 @@ export default function CheckinFlow() {
   if (celebrating || total === 0 || !metric) {
     return (
       <ThemedView style={[styles.container, styles.center]}>
+        {celebrating && <ConfettiBurst />}
         <Animated.View entering={ZoomIn.springify()} style={styles.celebrateIcon}>
           <View style={[styles.bigCheck, { backgroundColor: colors.success }]}>
             <ThemedText type="title" style={{ color: colors.onTint, fontSize: 40, lineHeight: 48 }}>

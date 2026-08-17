@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { QuickLogRow } from '@/components/quick-log';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ArchetypeIdentity } from '@/constants/archetypes';
 import { Spacing } from '@/constants/theme';
 import { ActiveExperimentBundle } from '@/db/repo';
 import { actualDays } from '@/domain/phase-engine';
@@ -38,7 +39,9 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
       <Pressable onPress={() => router.push(`/experiment/${experiment.id}` as never)}>
         <View style={styles.headerRow}>
           <View style={{ flexShrink: 1 }}>
-            <ThemedText type="smallBold">{experiment.title} ›</ThemedText>
+            <ThemedText type="smallBold">
+              {ArchetypeIdentity[experiment.archetype].emoji} {experiment.title} ›
+            </ThemedText>
             <ThemedText type="small" style={{ color: colors.textSecondary }}>
               {phaseInfo}
             </ThemedText>
