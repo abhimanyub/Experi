@@ -49,6 +49,14 @@ export default function RootLayout() {
           />
           <Stack.Screen name="experiment/[id]" options={{ title: 'Experiment' }} />
           <Stack.Screen
+            name="checkin/[experimentId]"
+            options={{ presentation: 'formSheet', sheetAllowedDetents: [0.75], title: 'Check in' }}
+          />
+          <Stack.Screen
+            name="ai-draft"
+            options={{ presentation: 'modal', title: 'Draft with Claude' }}
+          />
+          <Stack.Screen
             name="confounder/[experimentId]"
             options={{
               presentation: 'formSheet',

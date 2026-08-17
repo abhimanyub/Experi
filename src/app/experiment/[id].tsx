@@ -18,6 +18,7 @@ import {
   getExperimentDetail,
 } from '@/db/repo';
 import { actualDays, currentPhase, plannedEnd } from '@/domain/phase-engine';
+import { compareMetricAcrossPhases, comparisonValue, contextLine } from '@/domain/verdict-math';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function ExperimentDetailScreen() {
@@ -143,6 +144,51 @@ export default function ExperimentDetailScreen() {
           </ThemedView>
         ))}
 
+        {/* progress so far */}
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedText type="smallBold">Progress so far</ThemedText>
+          {metrics.map((m) => {
+            const cmp = compareMetricAcrossPhases(m, phases, observations, { now });
+            const phasesWithData = cmp.phases.filter((s) => s.n > 0);
+            if (phasesWithData.length === 0) {
+              return (
+                <View key={m.id} style={styles.progressMetric}>
+                  <ThemedText type="small">{m.name}</ThemedText>
+                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                    No data yet.
+                  </ThemedText>
+                </View>
+              );
+            }
+            return (
+              <View key={m.id} style={styles.progressMetric}>
+                <ThemedText type="small">{m.name}</ThemedText>
+                <View style={styles.progressPhases}>
+                  {phasesWithData.map((s) => (
+                    <View
+                      key={s.phaseId}
+                      style={[styles.progressPill, { backgroundColor: colors.backgroundSelected }]}>
+                      <ThemedText type="small">
+                        {s.label}: {comparisonValue(m, s) ?? '—'}
+                        {m.type === 'boolean' ? '%' : ''}
+                      </ThemedText>
+                      <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                        n={s.n}
+                        {s.nFlagged > 0 ? ` · ⚑${s.nFlagged}` : ''}
+                      </ThemedText>
+                    </View>
+                  ))}
+                </View>
+                {phasesWithData.length >= 2 && (
+                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                    {contextLine(m, cmp)}
+                  </ThemedText>
+                )}
+              </View>
+            );
+          })}
+        </ThemedView>
+
         {/* confounders */}
         <ThemedView type="backgroundElement" style={styles.card}>
           <View style={styles.rowBetween}>
@@ -247,6 +293,19 @@ const styles = StyleSheet.create({
   },
   confounderRow: {
     gap: Spacing.half,
+  },
+  progressMetric: {
+    gap: Spacing.one,
+  },
+  progressPhases: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
+  progressPill: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: Spacing.two,
   },
   abandonButton: {
     alignItems: 'center',

@@ -9,6 +9,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
 import { Metric, ScaleConfig } from '@/domain/types';
+import { tapFeedback } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
 
 interface Props {
@@ -23,6 +24,7 @@ export function QuickLogRow({ metric, loggedToday, onLog }: Props) {
   const [justLogged, setJustLogged] = useState(false);
 
   const log = (value: number) => {
+    tapFeedback();
     setJustLogged(true);
     onLog(value);
     setTimeout(() => setJustLogged(false), 1200);
@@ -31,12 +33,29 @@ export function QuickLogRow({ metric, loggedToday, onLog }: Props) {
   const done =
     'timesPerDay' in metric.schedule ? loggedToday >= metric.schedule.timesPerDay : false;
 
+  if (done) {
+    return (
+      <View style={styles.row}>
+        <View style={styles.labelCol}>
+          <ThemedText type="smallBold" style={{ color: colors.textSecondary }}>
+            {metric.name}
+          </ThemedText>
+        </View>
+        <View style={[styles.doneCheck, { backgroundColor: colors.successSoft }]}>
+          <ThemedText type="smallBold" style={{ color: colors.success }}>
+            ✓
+          </ThemedText>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.row}>
       <View style={styles.labelCol}>
         <ThemedText type="smallBold">{metric.name}</ThemedText>
         <ThemedText type="small" style={{ color: colors.textSecondary }}>
-          {justLogged ? 'Logged ✓' : done ? 'Done today' : `${loggedToday} today`}
+          {justLogged ? 'Logged ✓' : `${loggedToday} today`}
         </ThemedText>
       </View>
 
@@ -129,5 +148,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.three,
+  },
+  doneCheck: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

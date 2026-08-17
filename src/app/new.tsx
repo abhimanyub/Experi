@@ -3,7 +3,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -16,7 +16,8 @@ import {
   NewPhaseInput,
 } from '@/db/repo';
 import { buildAlternatingPhases } from '@/domain/phase-engine';
-import { MIN_PHASE_DAYS } from '@/domain/types';
+import { Archetype, MIN_PHASE_DAYS } from '@/domain/types';
+import { useAiDraftStore } from '@/lib/ai-draft-store';
 import { rescheduleAll } from '@/lib/notifications';
 import { defaultMetric, MetricEditor } from '@/components/wizard/metric-editor';
 import { PhaseEditor } from '@/components/wizard/phase-editor';
@@ -45,6 +46,21 @@ export default function NewExperimentWizard() {
   const [metrics, setMetrics] = useState<NewMetricInput[]>([]);
   const [phases, setPhases] = useState<NewPhaseInput[]>([]);
   const [includeOptional, setIncludeOptional] = useState(false);
+  const [aiArchetype, setAiArchetype] = useState<Archetype | null>(null);
+
+  // Prefill from an AI draft handed over by /ai-draft, landing on review.
+  const aiDraft = useAiDraftStore((s) => s.draft);
+  const clearAiDraft = useAiDraftStore((s) => s.clear);
+  useEffect(() => {
+    if (!aiDraft) return;
+    setTitle(aiDraft.title);
+    setHypothesis(aiDraft.hypothesis);
+    setMetrics(aiDraft.metrics);
+    setPhases(aiDraft.phases);
+    setAiArchetype(aiDraft.archetype);
+    setStep('review');
+    clearAiDraft();
+  }, [aiDraft, clearAiDraft]);
 
   const applyTemplate = (tpl: ExperimentTemplate) => {
     setTemplate(tpl);
@@ -96,7 +112,7 @@ export default function NewExperimentWizard() {
       await createExperiment({
         title: title.trim(),
         hypothesis: hypothesis.trim(),
-        archetype: template?.archetype ?? 'custom',
+        archetype: aiArchetype ?? template?.archetype ?? 'custom',
         metrics,
         phases,
         now: Date.now(),
@@ -175,6 +191,18 @@ export default function NewExperimentWizard() {
       </ThemedText>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {step === 'template' && (
+          <Pressable
+            onPress={() => router.push('/ai-draft' as never)}
+            style={[styles.aiButton, { backgroundColor: colors.tintSoft }]}>
+            <ThemedText type="smallBold" style={{ color: colors.tint }}>
+              ✨ Draft with Claude
+            </ThemedText>
+            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              Describe your idea; get metrics, controls, and phases suggested.
+            </ThemedText>
+          </Pressable>
+        )}
         {step === 'template' &&
           TEMPLATES.map((tpl) => (
             <Pressable
@@ -384,6 +412,11 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   templateRow: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.half,
+  },
+  aiButton: {
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.half,
