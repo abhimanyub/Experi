@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.abhimanyub.experi",
+      "bundleIdentifier": "com.abhimanyubh.experi",
       "supportsTablet": false
     },
     "android": {
