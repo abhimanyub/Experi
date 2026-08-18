@@ -45,7 +45,7 @@ export default function HistoryScreen() {
       Alert.alert('Copied', 'Export JSON copied to clipboard (web).');
       return;
     }
-    const file = new File(Paths.cache, `labnote-export-${Date.now()}.json`);
+    const file = new File(Paths.cache, `experi-export-${Date.now()}.json`);
     file.write(json);
     await Sharing.shareAsync(file.uri, { mimeType: 'application/json' });
   };
