@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Experi",
-    "slug": "Experi",
+    "slug": "abhimanyubh",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.abhimanyubh.experi",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -39,6 +42,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f10fdf24-fc8b-4418-a009-b46d6f2795c5"
+      }
+    },
+    "owner": "abhimanyubhs-team"
   }
 }
