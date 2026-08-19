@@ -3,14 +3,16 @@
 
 from PIL import Image, ImageDraw
 
-PAPER = (251, 247, 245, 255)      # warm paper
-INK = (30, 24, 24, 255)           # outline ink
-RED = (200, 53, 59, 255)          # glass red
-RED_DEEP = (166, 38, 44, 255)     # liquid shade
-STRAW = (30, 24, 24, 255)
-STRAW_STRIPE = (255, 255, 255, 255)
-GLASS = (255, 255, 255, 255)
-HIGHLIGHT = (255, 255, 255, 90)
+# Palette from the inspiration photo: amber glass, iced drink, brass straw.
+PAPER = (247, 242, 238, 255)      # warm linen
+INK = (38, 24, 19, 255)           # deep coffee outline
+RED = (146, 52, 31, 255)          # amber-red liquid
+RED_DEEP = (106, 35, 22, 255)     # liquid shade
+STRAW = (198, 149, 61, 255)       # brass straw
+STRAW_STRIPE = (240, 214, 158, 255)
+GLASS = (252, 248, 244, 255)
+HIGHLIGHT = (255, 255, 255, 80)
+ICE = (250, 243, 235, 215)
 
 
 def draw_glass(d: ImageDraw.ImageDraw, s: float = 1.0, ox: float = 0, oy: float = 0,
@@ -28,13 +30,12 @@ def draw_glass(d: ImageDraw.ImageDraw, s: float = 1.0, ox: float = 0, oy: float 
     glass_fill = (255, 255, 255, 0) if mono else GLASS
     w = max(2, int(26 * s))
 
-    # straw: one continuous line from top-right down into the glass
-    straw_top = (704, 84)
-    straw_bottom = (556, 730)
+    # brass straw with a bend (like the photo): angled top, straighter run below
     straw_color = ink if mono else STRAW
-    d.line([pt(*straw_top), pt(*straw_bottom)], fill=straw_color, width=int(46 * s))
+    straw_pts = [pt(716, 92), pt(600, 260), pt(560, 730)]
+    d.line(straw_pts, fill=straw_color, width=int(46 * s), joint="curve")
     if not mono:
-        d.line([pt(690, 112), pt(666, 216)], fill=STRAW_STRIPE, width=int(14 * s))
+        d.line([pt(700, 116), pt(652, 186)], fill=STRAW_STRIPE, width=int(13 * s))
 
     # glass body: tall, slightly tapered
     d.polygon([pt(340, 190), pt(684, 190), pt(650, 880), pt(374, 880)], fill=glass_fill)
@@ -44,11 +45,14 @@ def draw_glass(d: ImageDraw.ImageDraw, s: float = 1.0, ox: float = 0, oy: float 
     # deeper shade at bottom third
     d.polygon([pt(368, 660), pt(656, 660), pt(646, 858), pt(378, 858)], fill=deep)
     if not mono:
+        # ice cubes floating near the surface
+        d.rounded_rectangle(box(420, 330, 520, 424), radius=18 * s, fill=ICE)
+        d.rounded_rectangle(box(534, 356, 616, 434), radius=16 * s, fill=ICE)
         # glass highlight stripe
         d.line([pt(410, 330), pt(424, 820)], fill=HIGHLIGHT, width=int(34 * s))
 
     # straw visible through the liquid (redraw the submerged run in front)
-    d.line([pt(608, 300), pt(*straw_bottom)], fill=straw_color, width=int(46 * s))
+    d.line([pt(575, 302), pt(560, 730)], fill=straw_color, width=int(46 * s))
 
     # glass outline: rounded joints, drawn last so the rim overlaps the straw
     d.line(

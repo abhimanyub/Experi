@@ -168,7 +168,13 @@ export default function ExperimentDetailScreen() {
         {metrics.map((m) => (
           <ThemedView key={m.id} type="backgroundElement" style={styles.card}>
             <ThemedText type="smallBold">{m.name}</ThemedText>
-            <DotChart metric={m} phases={phases} observations={observations} width={chartWidth} />
+            <DotChart
+              metric={m}
+              phases={phases}
+              observations={observations}
+              width={chartWidth}
+              live={experiment.status === 'active' && active !== null}
+            />
           </ThemedView>
         ))}
 

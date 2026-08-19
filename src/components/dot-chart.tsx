@@ -2,7 +2,16 @@
 // Flagged (confounded) observations render dimmed with a hollow center.
 // Identity comes from the phase timeline legend rendered above the charts.
 
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Circle, Line } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
@@ -16,16 +25,62 @@ const HEIGHT = 96;
 const DOT_R = 4; // 8px marker
 const PAD = { top: 8, bottom: 8, left: 30, right: 8 };
 
+/** Fizz: one slow carbonation bubble while the experiment is live. */
+function Bubble({
+  xFraction,
+  size,
+  delay,
+  width,
+  color,
+}: {
+  xFraction: number;
+  size: number;
+  delay: number;
+  width: number;
+  color: string;
+}) {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.value = withDelay(
+      delay,
+      withRepeat(withTiming(1, { duration: 4200, easing: Easing.in(Easing.quad) }), -1)
+    );
+  }, [delay, p]);
+  const style = useAnimatedStyle(() => ({
+    opacity: 0.3 * (1 - p.value),
+    transform: [{ translateY: -(HEIGHT - 28) * p.value }],
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          left: PAD.left + xFraction * (width - PAD.left - PAD.right),
+          bottom: PAD.bottom + 2,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
 export function DotChart({
   metric,
   phases,
   observations,
   width,
+  live = false,
 }: {
   metric: Metric;
   phases: Phase[];
   observations: Observation[];
   width: number;
+  live?: boolean;
 }) {
   const colors = useTheme();
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
@@ -106,6 +161,13 @@ export function DotChart({
           );
         })}
       </Svg>
+      {live && (
+        <>
+          <Bubble xFraction={0.22} size={5} delay={0} width={width} color={colors.tint} />
+          <Bubble xFraction={0.55} size={4} delay={1500} width={width} color={colors.tint} />
+          <Bubble xFraction={0.82} size={6} delay={2800} width={width} color={colors.tint} />
+        </>
+      )}
       {/* axis extremes in text tokens, not series color */}
       <View style={[styles.yLabels, { height: HEIGHT }]} pointerEvents="none">
         <ThemedText type="small" style={{ color: colors.textSecondary, fontSize: 10 }}>
