@@ -5,7 +5,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import Animated, { FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  ZoomIn,
+} from 'react-native-reanimated';
 
 import { ConfettiBurst } from '@/components/confetti';
 import { ThemedText } from '@/components/themed-text';
@@ -15,6 +22,28 @@ import { getActiveExperiments, logObservation } from '@/db/repo';
 import { Metric, ScaleConfig } from '@/domain/types';
 import { successFeedback, tapFeedback } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
+
+/** The pour: a done segment fills left-to-right with a liquid spring. */
+function PourSegment({ state }: { state: 'done' | 'active' | 'todo' }) {
+  const colors = useTheme();
+  const p = useSharedValue(state === 'done' ? 1 : 0);
+  useEffect(() => {
+    p.value = withSpring(state === 'done' ? 1 : 0, { damping: 15, stiffness: 90 });
+  }, [state, p]);
+  const liquid = useAnimatedStyle(() => ({ width: `${p.value * 100}%` }));
+  return (
+    <View
+      style={[
+        styles.progressSegment,
+        { backgroundColor: state === 'active' ? colors.tintSoft : colors.backgroundElement },
+      ]}>
+      <Animated.View style={[styles.progressLiquid, { backgroundColor: colors.success }, liquid]} />
+      {state === 'active' && (
+        <View style={[styles.progressLiquid, { backgroundColor: colors.tint, width: '18%' }]} />
+      )}
+    </View>
+  );
+}
 
 export default function CheckinFlow() {
   const { experimentId } = useLocalSearchParams<{ experimentId: string }>();
@@ -119,18 +148,12 @@ export default function CheckinFlow() {
 
   return (
     <ThemedView style={styles.container}>
-      {/* progress */}
+      {/* progress — each answered question pours its segment full */}
       <View style={styles.progressRow}>
         {queue.map((m, i) => (
-          <View
+          <PourSegment
             key={m.id}
-            style={[
-              styles.progressSegment,
-              {
-                backgroundColor:
-                  i < stepIndex ? colors.success : i === stepIndex ? colors.tint : colors.backgroundElement,
-              },
-            ]}
+            state={i < stepIndex ? 'done' : i === stepIndex ? 'active' : 'todo'}
           />
         ))}
       </View>
@@ -254,8 +277,14 @@ const styles = StyleSheet.create({
   },
   progressSegment: {
     flex: 1,
-    height: 4,
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
+  progressLiquid: {
+    height: '100%',
+    borderRadius: 3,
   },
   question: {
     gap: Spacing.four,

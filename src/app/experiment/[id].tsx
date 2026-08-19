@@ -249,16 +249,31 @@ export default function ExperimentDetailScreen() {
           <ThemedText type="smallBold">Observations ({observations.length})</ThemedText>
           {shownObservations.map((o) => (
             <View key={o.id} style={styles.rowBetween}>
-              <View style={{ flexShrink: 1 }}>
-                <ThemedText type="small">
-                  {metricName(o.metricId)}: {o.value}
-                  {o.flagged ? ' ⚑' : ''}
-                  {o.backfilled ? ' (backfilled)' : ''}
+              <View style={styles.obsLine}>
+                <ThemedText type="code" style={[styles.obsDate, { color: colors.textSecondary }]}>
+                  {new Date(o.observedAt).toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: '2-digit',
+                  })}
                 </ThemedText>
-                <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                  {new Date(o.observedAt).toLocaleString()}
-                  {o.note ? ` · ${o.note}` : ''}
-                </ThemedText>
+                <View style={{ flexShrink: 1 }}>
+                  <ThemedText
+                    type="small"
+                    style={
+                      o.backfilled
+                        ? { fontStyle: 'italic', color: colors.textSecondary }
+                        : undefined
+                    }>
+                    {metricName(o.metricId)}: {o.value}
+                    {o.flagged ? ' ⚑' : ''}
+                    {o.backfilled ? ' · backfilled' : ''}
+                  </ThemedText>
+                  {o.note ? (
+                    <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                      {o.note}
+                    </ThemedText>
+                  ) : null}
+                </View>
               </View>
               <Pressable
                 onPress={async () => {
@@ -332,6 +347,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.one,
     borderRadius: Spacing.two,
+  },
+  obsLine: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    flexShrink: 1,
+  },
+  obsDate: {
+    fontSize: 11,
+    lineHeight: 18,
+    minWidth: 52,
   },
   abandonButton: {
     alignItems: 'center',

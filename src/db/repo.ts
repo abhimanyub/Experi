@@ -9,6 +9,7 @@ import {
   shouldAutoTransition,
   transitionToNext,
 } from '../domain/phase-engine';
+import { compareMetricAcrossPhases, contextLine } from '../domain/verdict-math';
 import {
   Confounder,
   Experiment,
@@ -498,6 +499,51 @@ export async function cloneExperimentById(experimentId: string, now: number): Pr
   if (cloned.phases.length > 0) await db.insert(t.phases).values(cloned.phases);
   if (metrics.length > 0) await db.insert(t.metrics).values(metrics);
   return cloned.experiment.id;
+}
+
+export interface Insight {
+  experiment: Experiment;
+  verdict: Verdict | null;
+  /** Headline finding: first metric with 2+ phases of data, as an honest context line. */
+  headline: string | null;
+}
+
+export interface InsightStats {
+  completed: number;
+  adopted: number;
+  refuted: number;
+  observations: number;
+}
+
+/** Completed/abandoned experiments enriched with their key finding + aggregate stats. */
+export async function getInsights(): Promise<{ stats: InsightStats; insights: Insight[] }> {
+  const history = await getHistory();
+  const insights: Insight[] = [];
+  let totalObservations = 0;
+  for (const { experiment, verdict } of history) {
+    const detail = await getExperimentDetail(experiment.id);
+    let headline: string | null = null;
+    if (detail) {
+      totalObservations += detail.observations.length;
+      for (const metric of detail.metrics) {
+        const cmp = compareMetricAcrossPhases(metric, detail.phases, detail.observations, {});
+        if (cmp.phases.filter((s) => s.n > 0).length >= 2) {
+          headline = `${metric.name} — ${contextLine(metric, cmp)}`;
+          break;
+        }
+      }
+    }
+    insights.push({ experiment, verdict, headline });
+  }
+  return {
+    stats: {
+      completed: history.filter((h) => h.experiment.status === 'completed').length,
+      adopted: history.filter((h) => h.verdict?.willAdopt === true).length,
+      refuted: history.filter((h) => h.verdict?.outcome === 'refuted').length,
+      observations: totalObservations,
+    },
+    insights,
+  };
 }
 
 /** Full data dump for JSON export (spec: local-first, manual export). */

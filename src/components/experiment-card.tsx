@@ -4,6 +4,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { GlassFill } from '@/components/glass-fill';
 import { QuickLogRow } from '@/components/quick-log';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -33,6 +34,7 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
     (m) => (todayCounts[m.id] ?? 0) >= ('timesPerDay' in m.schedule ? m.schedule.timesPerDay : 1)
   ).length;
   const allDone = scheduled.length > 0 && doneCount === scheduled.length;
+  const fillFraction = scheduled.length > 0 ? doneCount / scheduled.length : 0;
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
@@ -46,11 +48,14 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
               {phaseInfo}
             </ThemedText>
           </View>
-          {allDone && (
-            <View style={[styles.donePill, { backgroundColor: colors.successSoft }]}>
-              <ThemedText type="small" style={{ color: colors.success }}>
-                ✓ Done today
-              </ThemedText>
+          {scheduled.length > 0 && activePhase && (
+            <View style={styles.glassCol}>
+              <GlassFill fraction={fillFraction} />
+              {allDone && (
+                <ThemedText type="small" style={{ color: colors.success }}>
+                  Full ✓
+                </ThemedText>
+              )}
             </View>
           )}
         </View>
@@ -109,10 +114,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
-  donePill: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
-    borderRadius: Spacing.three,
+  glassCol: {
+    alignItems: 'center',
+    gap: Spacing.half,
   },
   checkinButton: {
     alignItems: 'center',

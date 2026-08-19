@@ -1,5 +1,6 @@
-// History (M5): completed/abandoned experiments with outcome badges,
-// clone-to-rerun, and JSON export.
+// Insights: what your finished experiments actually taught you.
+// Stats strip, then one card per experiment — stamp, headline finding,
+// your written conclusion, adopted state. Clone to re-run; export everything.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { File, Paths } from 'expo-file-system';
@@ -11,24 +12,20 @@ import * as Clipboard from 'expo-clipboard';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { VerdictStamp } from '@/components/verdict-stamp';
+import { ArchetypeIdentity } from '@/constants/archetypes';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { cloneExperimentById, exportAllJson, getHistory } from '@/db/repo';
-import { VerdictOutcome } from '@/domain/types';
+import { cloneExperimentById, exportAllJson, getInsights } from '@/db/repo';
 import { useTheme } from '@/hooks/use-theme';
 
-const OUTCOME_BADGES: Record<VerdictOutcome, { label: string; emoji: string }> = {
-  supported: { label: 'Supported', emoji: '✅' },
-  refuted: { label: 'Refuted', emoji: '❌' },
-  inconclusive: { label: 'Inconclusive', emoji: '🤷' },
-  contaminated: { label: 'Contaminated', emoji: '⚠️' },
-};
-
-export default function HistoryScreen() {
+export default function InsightsScreen() {
   const router = useRouter();
   const colors = useTheme();
   const queryClient = useQueryClient();
 
-  const { data: entries = [] } = useQuery({ queryKey: ['history'], queryFn: getHistory });
+  const { data } = useQuery({ queryKey: ['insights'], queryFn: getInsights });
+  const insights = data?.insights ?? [];
+  const stats = data?.stats;
 
   const clone = useMutation({
     mutationFn: (id: string) => cloneExperimentById(id, Date.now()),
@@ -45,7 +42,7 @@ export default function HistoryScreen() {
       Alert.alert('Copied', 'Export JSON copied to clipboard (web).');
       return;
     }
-    const file = new File(Paths.cache, `experi-export-${Date.now()}.json`);
+    const file = new File(Paths.cache, `redglass-export-${Date.now()}.json`);
     file.write(json);
     await Sharing.shareAsync(file.uri, { mimeType: 'application/json' });
   };
@@ -55,7 +52,7 @@ export default function HistoryScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
-            <ThemedText type="title">History</ThemedText>
+            <ThemedText type="title">Insights</ThemedText>
             <Pressable onPress={exportJson}>
               <ThemedText type="small" style={{ color: colors.tint }}>
                 Export JSON
@@ -63,67 +60,85 @@ export default function HistoryScreen() {
             </Pressable>
           </View>
 
-          {entries.length === 0 && (
+          {stats && insights.length > 0 && (
+            <View style={styles.statsRow}>
+              {[
+                { n: stats.completed, label: 'settled' },
+                { n: stats.adopted, label: 'adopted' },
+                { n: stats.refuted, label: 'refuted' },
+                { n: stats.observations, label: 'observations' },
+              ].map((s) => (
+                <ThemedView key={s.label} type="backgroundElement" style={styles.statCell}>
+                  <ThemedText type="subtitle" style={{ color: colors.tint }}>
+                    {s.n}
+                  </ThemedText>
+                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                    {s.label}
+                  </ThemedText>
+                </ThemedView>
+              ))}
+            </View>
+          )}
+
+          {insights.length === 0 && (
             <ThemedView type="backgroundElement" style={styles.empty}>
               <ThemedText style={styles.emptyEmoji}>📔</ThemedText>
               <ThemedText type="small" style={{ color: colors.textSecondary, textAlign: 'center' }}>
-                No finished experiments yet. Every one you complete lands here with its verdict —
-                your personal book of settled debates.
+                No settled experiments yet. Every verdict you seal becomes an insight here — your
+                personal book of things you actually tested.
               </ThemedText>
             </ThemedView>
           )}
 
-          {entries.map(({ experiment, verdict }) => {
-            const badge =
-              experiment.status === 'abandoned'
-                ? { label: 'Abandoned', emoji: '🏳️' }
-                : verdict
-                  ? OUTCOME_BADGES[verdict.outcome]
-                  : { label: 'Completed', emoji: '✓' };
-            return (
-              <Pressable
-                key={experiment.id}
-                onPress={() => router.push(`/experiment/${experiment.id}` as never)}>
-                <ThemedView type="backgroundElement" style={styles.entryCard}>
-                  <View style={styles.entryHeader}>
-                    <ThemedText type="smallBold" style={{ flexShrink: 1 }}>
-                      {experiment.title}
+          {insights.map(({ experiment, verdict, headline }) => (
+            <Pressable
+              key={experiment.id}
+              onPress={() => router.push(`/experiment/${experiment.id}` as never)}>
+              <ThemedView type="backgroundElement" style={styles.entryCard}>
+                <View style={styles.entryHeader}>
+                  <ThemedText type="smallBold" style={{ flexShrink: 1 }}>
+                    {ArchetypeIdentity[experiment.archetype].emoji} {experiment.title}
+                  </ThemedText>
+                  <VerdictStamp
+                    outcome={experiment.status === 'abandoned' ? 'abandoned' : (verdict?.outcome ?? 'inconclusive')}
+                  />
+                </View>
+
+                {headline && (
+                  <ThemedText type="small" style={{ color: colors.tint }}>
+                    {headline}
+                  </ThemedText>
+                )}
+
+                {verdict && (
+                  <ThemedText
+                    type="small"
+                    numberOfLines={3}
+                    style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
+                    “{verdict.conclusion}”
+                  </ThemedText>
+                )}
+                {experiment.status === 'abandoned' && experiment.abandonReason && (
+                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                    Reason: {experiment.abandonReason}
+                  </ThemedText>
+                )}
+
+                <View style={styles.entryFooter}>
+                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                    {experiment.endedAt ? new Date(experiment.endedAt).toLocaleDateString() : ''}
+                    {verdict?.willAdopt === true && ' · change adopted'}
+                    {verdict?.willAdopt === false && ' · change dropped'}
+                  </ThemedText>
+                  <Pressable onPress={() => clone.mutate(experiment.id)}>
+                    <ThemedText type="small" style={{ color: colors.tint }}>
+                      Clone & re-run
                     </ThemedText>
-                    <View style={[styles.badge, { backgroundColor: colors.backgroundSelected }]}>
-                      <ThemedText type="small">
-                        {badge.emoji} {badge.label}
-                      </ThemedText>
-                    </View>
-                  </View>
-                  {verdict && (
-                    <ThemedText
-                      type="small"
-                      numberOfLines={2}
-                      style={{ color: colors.textSecondary }}>
-                      {verdict.conclusion}
-                    </ThemedText>
-                  )}
-                  {experiment.status === 'abandoned' && experiment.abandonReason && (
-                    <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                      Reason: {experiment.abandonReason}
-                    </ThemedText>
-                  )}
-                  <View style={styles.entryFooter}>
-                    <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                      {experiment.endedAt ? new Date(experiment.endedAt).toLocaleDateString() : ''}
-                      {verdict?.willAdopt === true && ' · adopted'}
-                      {verdict?.willAdopt === false && ' · dropped'}
-                    </ThemedText>
-                    <Pressable onPress={() => clone.mutate(experiment.id)}>
-                      <ThemedText type="small" style={{ color: colors.tint }}>
-                        Clone & re-run
-                      </ThemedText>
-                    </Pressable>
-                  </View>
-                </ThemedView>
-              </Pressable>
-            );
-          })}
+                  </Pressable>
+                </View>
+              </ThemedView>
+            </Pressable>
+          ))}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -135,13 +150,24 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, paddingHorizontal: Spacing.three, maxWidth: MaxContentWidth },
   content: {
     gap: Spacing.two,
-    paddingTop: Platform.OS === 'web' ? 72 : Spacing.three, // clear the floating web tab bar
+    paddingTop: Platform.OS === 'web' ? 72 : Spacing.three,
     paddingBottom: BottomTabInset + Spacing.four,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: Spacing.one,
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    borderRadius: Spacing.three,
+    paddingVertical: Spacing.two,
+    gap: 0,
   },
   empty: {
     borderRadius: Spacing.four,
@@ -156,7 +182,7 @@ const styles = StyleSheet.create({
   entryCard: {
     borderRadius: Spacing.four,
     padding: Spacing.three,
-    gap: Spacing.one,
+    gap: Spacing.two,
   },
   entryHeader: {
     flexDirection: 'row',
@@ -164,15 +190,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
-  badge: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
-    borderRadius: Spacing.two,
-  },
   entryFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: Spacing.one,
+    marginTop: Spacing.half,
   },
 });

@@ -18,6 +18,7 @@ import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 
 import { ConfettiBurst } from '@/components/confetti';
 import { DotChart } from '@/components/dot-chart';
+import { VerdictStamp } from '@/components/verdict-stamp';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ChipRow } from '@/components/wizard/chips';
@@ -25,7 +26,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { getExperimentDetail, saveVerdict } from '@/db/repo';
 import { VerdictOutcome } from '@/domain/types';
 import { compareMetricAcrossPhases, comparisonValue, contextLine } from '@/domain/verdict-math';
-import { successFeedback } from '@/lib/haptics';
+import { stampFeedback, successFeedback } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
 
 const OUTCOMES: { value: VerdictOutcome; label: string; blurb: string }[] = [
@@ -75,7 +76,8 @@ export default function VerdictFlow() {
     onSuccess: () => {
       queryClient.invalidateQueries();
       setSaved(true);
-      successFeedback();
+      stampFeedback();
+      setTimeout(successFeedback, 350);
     },
   });
 
@@ -87,12 +89,8 @@ export default function VerdictFlow() {
     return (
       <ThemedView style={[styles.container, styles.centerAll]}>
         <ConfettiBurst />
-        <Animated.View entering={ZoomIn.springify()}>
-          <View style={[styles.bigBadge, { backgroundColor: colors.success }]}>
-            <ThemedText type="title" style={{ color: colors.onTint, fontSize: 40, lineHeight: 48 }}>
-              ✓
-            </ThemedText>
-          </View>
+        <Animated.View entering={ZoomIn.springify().damping(9)}>
+          <VerdictStamp outcome={outcome ?? 'inconclusive'} size="large" />
         </Animated.View>
         <ThemedText type="subtitle">Settled with data</ThemedText>
         <ThemedText type="small" style={{ color: colors.textSecondary, textAlign: 'center' }}>

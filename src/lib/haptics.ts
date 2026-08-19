@@ -12,3 +12,9 @@ export function successFeedback() {
   if (Platform.OS === 'web') return;
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 }
+
+/** Heavy thud — the rubber stamp landing. */
+export function stampFeedback() {
+  if (Platform.OS === 'web') return;
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+}

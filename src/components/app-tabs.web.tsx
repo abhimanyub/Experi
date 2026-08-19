@@ -25,7 +25,7 @@ export default function AppTabs() {
             <TabButton>Today</TabButton>
           </TabTrigger>
           <TabTrigger name="history" href="/history" asChild>
-            <TabButton>History</TabButton>
+            <TabButton>Insights</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
