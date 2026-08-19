@@ -7,17 +7,18 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
-// Lab-notebook palette: warm paper in light mode, warm ink in dark.
-// Interactive tint + success stay from the validated viz palette family.
+// Red Glass palette: warm paper in light mode, warm ink in dark
+// (mode follows the system setting via useColorScheme). Brand red is the
+// interactive tint; success/warning keep viz-family hues.
 export const Colors = {
   light: {
-    text: '#1C1B18',
-    background: '#FBFAF7',
-    backgroundElement: '#F2F0EA',
-    backgroundSelected: '#E7E4DB',
-    textSecondary: '#6B675C',
-    tint: '#2a78d6',
-    tintSoft: '#E3EEFB',
+    text: '#1E1818',
+    background: '#FBF7F5',
+    backgroundElement: '#F4EDEA',
+    backgroundSelected: '#EADFDA',
+    textSecondary: '#6F6360',
+    tint: '#C8353B',
+    tintSoft: '#FBE5E4',
     onTint: '#ffffff',
     success: '#1baf7a',
     successSoft: '#E0F5EC',
@@ -25,13 +26,13 @@ export const Colors = {
     warningSoft: '#FBF0DA',
   },
   dark: {
-    text: '#F4F2ED',
-    background: '#121110',
-    backgroundElement: '#211F1C',
-    backgroundSelected: '#2E2B27',
-    textSecondary: '#A8A396',
-    tint: '#3987e5',
-    tintSoft: '#16283E',
+    text: '#F5EFED',
+    background: '#171212',
+    backgroundElement: '#252020',
+    backgroundSelected: '#332B2B',
+    textSecondary: '#AB9E9A',
+    tint: '#E85C63',
+    tintSoft: '#3A1D1F',
     onTint: '#ffffff',
     success: '#199e70',
     successSoft: '#123227',

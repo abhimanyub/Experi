@@ -16,7 +16,7 @@ import {
   startDraft,
   syncPhaseTransitions,
 } from '@/db/repo';
-import { ensureNotificationSetup } from '@/lib/notifications';
+import { ensureNotificationSetup, rescheduleAll } from '@/lib/notifications';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function TodayScreen() {
@@ -36,6 +36,19 @@ export default function TodayScreen() {
     queryKey: ['active-experiments'],
     queryFn: () => getActiveExperiments(Date.now()),
   });
+
+  // Keep local reminders in sync with whatever is currently active —
+  // covers app reinstalls, phase endings, abandons, and completed experiments.
+  useEffect(() => {
+    if (isLoading) return;
+    rescheduleAll(
+      bundles
+        .filter((b) => b.activePhase !== null)
+        .flatMap((b) =>
+          b.metrics.map((metric) => ({ metric, experimentTitle: b.experiment.title }))
+        )
+    );
+  }, [bundles, isLoading]);
 
   const { data: drafts = [] } = useQuery({
     queryKey: ['draft-experiments'],
@@ -103,7 +116,7 @@ export default function TodayScreen() {
 
           {bundles.length === 0 && !isLoading && (
             <ThemedView type="backgroundElement" style={styles.empty}>
-              <ThemedText style={styles.emptyEmoji}>🧪</ThemedText>
+              <ThemedText style={styles.emptyEmoji}>🥤</ThemedText>
               <ThemedText type="smallBold" style={styles.emptyQuote}>
                 “The first principle is that you must not fool yourself — and you are the easiest
                 person to fool.”
