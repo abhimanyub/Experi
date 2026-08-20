@@ -77,6 +77,7 @@ export interface Observation {
   observedAt: number;
   backfilled: boolean;
   flagged: boolean;
+  missed: boolean; // explicit "didn't measure" marker — excluded from all math
 }
 
 export interface Confounder {

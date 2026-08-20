@@ -18,12 +18,23 @@ import { ChipRow } from './chips';
 
 export const MAX_METRICS = 4;
 
-export function defaultMetric(): NewMetricInput {
+/** New metrics inherit reminder times already chosen on earlier metrics. */
+export function defaultMetric(existing: NewMetricInput[] = []): NewMetricInput {
+  const lastScheduled = [...existing]
+    .reverse()
+    .find((m) => 'remindAt' in m.schedule && m.schedule.remindAt.length > 0);
+  const schedule: NewMetricInput['schedule'] =
+    lastScheduled && 'remindAt' in lastScheduled.schedule
+      ? {
+          timesPerDay: lastScheduled.schedule.timesPerDay,
+          remindAt: [...lastScheduled.schedule.remindAt],
+        }
+      : { timesPerDay: 1, remindAt: ['20:00'] };
   return {
     name: '',
     type: 'scale',
     config: { min: 1, max: 5 },
-    schedule: { timesPerDay: 1, remindAt: ['20:00'] },
+    schedule,
     direction: 'higher_is_better',
   };
 }
@@ -205,7 +216,7 @@ export function MetricEditor({
 
       {metrics.length < MAX_METRICS ? (
         <Pressable
-          onPress={() => onChange([...metrics, defaultMetric()])}
+          onPress={() => onChange([...metrics, defaultMetric(metrics)])}
           style={[styles.addButton, { backgroundColor: colors.backgroundElement }]}>
           <ThemedText type="smallBold">+ Add metric</ThemedText>
         </Pressable>

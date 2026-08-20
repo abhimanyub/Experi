@@ -8,6 +8,7 @@ import {
   phaseForTimestamp,
   shouldAutoTransition,
   transitionToNext,
+  upcomingPhase,
 } from '../domain/phase-engine';
 import { compareMetricAcrossPhases, contextLine } from '../domain/verdict-math';
 import {
@@ -36,10 +37,16 @@ export interface ActiveExperimentBundle {
   phases: Phase[];
   metrics: Metric[];
   activePhase: Phase | null;
-  todayCounts: Record<string, number>; // metricId -> observations logged today
+  upcomingPhase: Phase | null; // future-start experiments
+  todayCounts: Record<string, number>; // metricId -> observations logged on the selected day
+  missedCounts: Record<string, number>; // metricId -> missed markers on the selected day
 }
 
-export async function getActiveExperiments(now: number): Promise<ActiveExperimentBundle[]> {
+/** Bundles for the Today screen. `forDate` selects which day the counts cover. */
+export async function getActiveExperiments(
+  now: number,
+  forDate?: number
+): Promise<ActiveExperimentBundle[]> {
   const experiments = (await db
     .select()
     .from(t.experiments)
@@ -56,19 +63,22 @@ export async function getActiveExperiments(now: number): Promise<ActiveExperimen
   const metricRows = await db.select().from(t.metrics).where(inArray(t.metrics.experimentId, ids));
   const metrics = metricRows.map(metricFromRow);
 
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
+  const dayStart = new Date(forDate ?? now);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = dayStart.getTime() + 24 * 60 * 60 * 1000;
   const metricIds = metrics.map((m) => m.id);
   // Count in JS — observation volume is tiny (personal app).
-  const todayCountAll: Record<string, number> = {};
+  const countAll: Record<string, number> = {};
+  const missedAll: Record<string, number> = {};
   if (metricIds.length > 0) {
-    const todayRows = await db
+    const rows = await db
       .select()
       .from(t.observations)
       .where(inArray(t.observations.metricId, metricIds));
-    for (const o of todayRows) {
-      if (o.observedAt >= startOfDay.getTime()) {
-        todayCountAll[o.metricId] = (todayCountAll[o.metricId] ?? 0) + 1;
+    for (const o of rows) {
+      if (o.observedAt >= dayStart.getTime() && o.observedAt < dayEnd) {
+        countAll[o.metricId] = (countAll[o.metricId] ?? 0) + 1;
+        if (o.missed) missedAll[o.metricId] = (missedAll[o.metricId] ?? 0) + 1;
       }
     }
   }
@@ -77,13 +87,19 @@ export async function getActiveExperiments(now: number): Promise<ActiveExperimen
     const expPhases = phases.filter((p) => p.experimentId === experiment.id);
     const expMetrics = metrics.filter((m) => m.experimentId === experiment.id);
     const todayCounts: Record<string, number> = {};
-    for (const m of expMetrics) todayCounts[m.id] = todayCountAll[m.id] ?? 0;
+    const missedCounts: Record<string, number> = {};
+    for (const m of expMetrics) {
+      todayCounts[m.id] = countAll[m.id] ?? 0;
+      missedCounts[m.id] = missedAll[m.id] ?? 0;
+    }
     return {
       experiment,
       phases: expPhases,
       metrics: expMetrics,
-      activePhase: currentPhase(expPhases),
+      activePhase: currentPhase(expPhases, now),
+      upcomingPhase: upcomingPhase(expPhases, now),
       todayCounts,
+      missedCounts,
     };
   });
 }
@@ -134,6 +150,7 @@ export async function logObservation(params: {
   note?: string;
   now: number;
   observedAt?: number;
+  missed?: boolean;
 }): Promise<Observation> {
   const metric = await getMetric(params.metricId);
   if (!metric) throw new Error('Metric not found');
@@ -141,7 +158,9 @@ export async function logObservation(params: {
   const observedAt = params.observedAt ?? params.now;
   const startOfToday = new Date(params.now).setHours(0, 0, 0, 0);
   const backfilled = observedAt < startOfToday;
-  const phase = backfilled ? phaseForTimestamp(phases, observedAt) : currentPhase(phases);
+  const phase = backfilled
+    ? phaseForTimestamp(phases, observedAt)
+    : currentPhase(phases, params.now);
   if (!phase) throw new Error('No phase covers that time — cannot log');
   const confounders = await getConfounders(metric.experimentId);
 
@@ -154,6 +173,7 @@ export async function logObservation(params: {
     observedAt,
     backfilled,
     flagged: isInConfounderWindow(observedAt, confounders),
+    missed: !!params.missed,
   };
   await db.insert(t.observations).values(obs);
   return obs;
@@ -220,6 +240,7 @@ export async function createExperiment(params: {
   now: number;
   start: boolean;
   skipBaseline?: boolean;
+  startAt?: number;
 }): Promise<string> {
   const { title, hypothesis, archetype, now } = params;
   const experimentId = newId();
@@ -256,6 +277,7 @@ export async function createExperiment(params: {
   if (params.start) {
     const started = startExperiment(experiment, phases, now, {
       skipBaseline: params.skipBaseline,
+      startAt: params.startAt,
     });
     await db.insert(t.experiments).values(started.experiment);
     await db.insert(t.phases).values(started.phases.updated);
@@ -581,7 +603,7 @@ export async function syncPhaseTransitions(now: number): Promise<number> {
   let transitions = 0;
   for (const e of experiments) {
     let phases = await getExperimentPhases(e.id);
-    let active = currentPhase(phases);
+    let active = currentPhase(phases, now);
     while (active && shouldAutoTransition(active, now)) {
       const r = transitionToNext(phases, now);
       for (const p of r.updated) {
@@ -594,7 +616,7 @@ export async function syncPhaseTransitions(now: number): Promise<number> {
       }
       transitions++;
       phases = r.updated;
-      active = currentPhase(phases);
+      active = currentPhase(phases, now);
       if (r.done) break;
     }
   }

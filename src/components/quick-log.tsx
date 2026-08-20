@@ -15,10 +15,12 @@ import { useTheme } from '@/hooks/use-theme';
 interface Props {
   metric: Metric;
   loggedToday: number;
+  missedCount?: number;
   onLog: (value: number) => void;
+  onMiss?: () => void; // offered on past days with nothing logged
 }
 
-export function QuickLogRow({ metric, loggedToday, onLog }: Props) {
+export function QuickLogRow({ metric, loggedToday, missedCount = 0, onLog, onMiss }: Props) {
   const router = useRouter();
   const colors = useTheme();
   const [justLogged, setJustLogged] = useState(false);
@@ -32,6 +34,7 @@ export function QuickLogRow({ metric, loggedToday, onLog }: Props) {
 
   const done =
     'timesPerDay' in metric.schedule ? loggedToday >= metric.schedule.timesPerDay : false;
+  const allMissed = done && missedCount > 0 && missedCount >= loggedToday;
 
   if (done) {
     return (
@@ -41,9 +44,15 @@ export function QuickLogRow({ metric, loggedToday, onLog }: Props) {
             {metric.name}
           </ThemedText>
         </View>
-        <View style={[styles.doneCheck, { backgroundColor: colors.successSoft }]}>
-          <ThemedText type="smallBold" style={{ color: colors.success }}>
-            ✓
+        <View
+          style={[
+            styles.doneCheck,
+            { backgroundColor: allMissed ? colors.backgroundSelected : colors.successSoft },
+          ]}>
+          <ThemedText
+            type="smallBold"
+            style={{ color: allMissed ? colors.textSecondary : colors.success }}>
+            {allMissed ? '–' : '✓'}
           </ThemedText>
         </View>
       </View>
@@ -55,18 +64,26 @@ export function QuickLogRow({ metric, loggedToday, onLog }: Props) {
       <View style={styles.labelCol}>
         <ThemedText type="smallBold">{metric.name}</ThemedText>
         <ThemedText type="small" style={{ color: colors.textSecondary }}>
-          {justLogged ? 'Logged ✓' : `${loggedToday} today`}
+          {justLogged ? 'Logged ✓' : `${loggedToday} logged`}
         </ThemedText>
+        {onMiss && (
+          <Pressable onPress={onMiss} hitSlop={8}>
+            <ThemedText type="small" style={{ color: colors.warning }}>
+              Mark missed
+            </ThemedText>
+          </Pressable>
+        )}
       </View>
 
       {metric.type === 'scale' && (
-        <View style={styles.chips}>
+        <View style={[styles.chips, scaleValues(metric).length > 6 && styles.chipsWide]}>
           {scaleValues(metric).map((v) => (
             <Pressable
               key={v}
               onPress={() => log(v)}
               style={({ pressed }) => [
                 styles.dot,
+                scaleValues(metric).length > 6 && styles.dotCompact,
                 {
                   backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement,
                 },
@@ -136,6 +153,17 @@ const styles = StyleSheet.create({
   chips: {
     flexDirection: 'row',
     gap: Spacing.one,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    flexShrink: 1,
+  },
+  chipsWide: {
+    maxWidth: 200, // five compact dots per row for 1-10 scales
+  },
+  dotCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   dot: {
     width: 40,

@@ -4,7 +4,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -20,7 +29,8 @@ import { TEMPLATE_EMOJI } from '@/constants/archetypes';
 import { Archetype, MIN_PHASE_DAYS } from '@/domain/types';
 import { useAiDraftStore } from '@/lib/ai-draft-store';
 import { rescheduleAll } from '@/lib/notifications';
-import { defaultMetric, MetricEditor } from '@/components/wizard/metric-editor';
+import { ChipRow } from '@/components/wizard/chips';
+import { MetricEditor } from '@/components/wizard/metric-editor';
 import { PhaseEditor } from '@/components/wizard/phase-editor';
 import { ExperimentTemplate, TEMPLATES } from '@/templates';
 import { useTheme } from '@/hooks/use-theme';
@@ -48,6 +58,8 @@ export default function NewExperimentWizard() {
   const [phases, setPhases] = useState<NewPhaseInput[]>([]);
   const [includeOptional, setIncludeOptional] = useState(false);
   const [aiArchetype, setAiArchetype] = useState<Archetype | null>(null);
+  const [baselineMode, setBaselineMode] = useState<'phase' | 'current'>('phase');
+  const [startWhen, setStartWhen] = useState<'now' | 'tomorrow' | 'in2days'>('now');
 
   // Prefill from an AI draft handed over by /ai-draft, landing on review.
   const aiDraft = useAiDraftStore((s) => s.draft);
@@ -106,6 +118,15 @@ export default function NewExperimentWizard() {
     setPhases(built.map((p) => ({ type: p.type, label: p.label, plannedDays: p.plannedDays })));
   };
 
+  /** 9:00 local on the chosen future morning. */
+  const resolveStartAt = (): number | undefined => {
+    if (startWhen === 'now') return undefined;
+    const d = new Date();
+    d.setDate(d.getDate() + (startWhen === 'tomorrow' ? 1 : 2));
+    d.setHours(9, 0, 0, 0);
+    return d.getTime();
+  };
+
   const create = useMutation({
     mutationFn: async (start: boolean) => {
       // Starting with no baseline phase records the skip (spec §4.2) — verdict shows a caveat.
@@ -119,6 +140,7 @@ export default function NewExperimentWizard() {
         now: Date.now(),
         start,
         skipBaseline,
+        startAt: resolveStartAt(),
       });
       const bundles = await getActiveExperiments(Date.now());
       await rescheduleAll(
@@ -136,7 +158,8 @@ export default function NewExperimentWizard() {
 
   const startWithBaselineCheck = () => {
     const hasBaseline = phases.some((p) => p.type === 'baseline');
-    if (hasBaseline) {
+    // "Current state is my baseline" was an explicit choice — no nagging alert.
+    if (hasBaseline || baselineMode === 'current') {
       create.mutate(true);
       return;
     }
@@ -148,6 +171,15 @@ export default function NewExperimentWizard() {
         { text: 'Start anyway', style: 'destructive', onPress: () => create.mutate(true) },
       ]
     );
+  };
+
+  const setBaseline = (mode: 'phase' | 'current') => {
+    setBaselineMode(mode);
+    if (mode === 'current') {
+      setPhases(phases.filter((p) => p.type !== 'baseline'));
+    } else if (!phases.some((p) => p.type === 'baseline')) {
+      setPhases([{ type: 'baseline', label: 'Baseline', plannedDays: 7 }, ...phases]);
+    }
   };
 
   const stepIndex = STEPS.indexOf(step);
@@ -172,6 +204,10 @@ export default function NewExperimentWizard() {
   const shortPhases = phases.filter((p) => p.plannedDays > 0 && p.plannedDays < MIN_PHASE_DAYS);
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
     <ThemedView style={{ flex: 1 }}>
       {/* progress header */}
       <View style={styles.progressRow}>
@@ -263,6 +299,21 @@ export default function NewExperimentWizard() {
 
         {step === 'phases' && (
           <>
+            <ThemedText type="smallBold">Baseline</ThemedText>
+            <ChipRow
+              options={[
+                { value: 'phase', label: 'Track a baseline first' },
+                { value: 'current', label: 'Current state is my baseline' },
+              ]}
+              value={baselineMode}
+              onChange={setBaseline}
+            />
+            {baselineMode === 'current' && (
+              <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                You start the change on day one and compare against how life feels from here.
+                Honest, but weaker than a measured before-picture.
+              </ThemedText>
+            )}
             {template?.phases.some((p) => p.optional) && (
               <Pressable
                 onPress={toggleOptionalPhases}
@@ -323,10 +374,24 @@ export default function NewExperimentWizard() {
               )}
               {!phases.some((p) => p.type === 'baseline') && (
                 <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                  ⚠︎ No baseline phase — the verdict will carry a caveat.
+                  {baselineMode === 'current'
+                    ? 'Using your current state as the baseline.'
+                    : '⚠︎ No baseline phase — the verdict will carry a caveat.'}
                 </ThemedText>
               )}
             </ThemedView>
+
+            <ThemedText type="smallBold">Starts</ThemedText>
+            <ChipRow
+              options={[
+                { value: 'now', label: 'Now' },
+                { value: 'tomorrow', label: 'Tomorrow 9:00' },
+                { value: 'in2days', label: `In 2 days` },
+              ]}
+              value={startWhen}
+              onChange={setStartWhen}
+            />
+
             <Pressable
               disabled={create.isPending}
               onPress={startWithBaselineCheck}
@@ -339,7 +404,11 @@ export default function NewExperimentWizard() {
                 },
               ]}>
               <ThemedText type="smallBold">
-                {create.isPending ? 'Working…' : 'Start experiment'}
+                {create.isPending
+                  ? 'Working…'
+                  : startWhen === 'now'
+                    ? 'Start experiment'
+                    : 'Schedule experiment'}
               </ThemedText>
             </Pressable>
             <Pressable
@@ -391,6 +460,7 @@ export default function NewExperimentWizard() {
         </View>
       )}
     </ThemedView>
+    </KeyboardAvoidingView>
   );
 }
 

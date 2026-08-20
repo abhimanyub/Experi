@@ -130,3 +130,18 @@ describe('cloneExperiment', () => {
     expect(r.phases.every((p) => p.experimentId === 'new0')).toBe(true);
   });
 });
+
+describe('startExperiment — scheduled start', () => {
+  it('starts at a future date', () => {
+    const future = T0 + 2 * 24 * 60 * 60 * 1000;
+    const r = startExperiment(draft(), phases(), T0, { startAt: future });
+    expect(r.experiment.startedAt).toBe(future);
+    expect(r.phases.opened?.startedAt).toBe(future);
+  });
+
+  it('rejects a past start date', () => {
+    expect(() => startExperiment(draft(), phases(), T0, { startAt: T0 - 1000 })).toThrow(
+      'past'
+    );
+  });
+});

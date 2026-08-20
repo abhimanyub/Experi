@@ -33,6 +33,7 @@ function obs(i: number, flagged = false): Observation {
     observedAt: T0 + i * DAY_MS,
     backfilled: false,
     flagged,
+    missed: false,
   };
 }
 

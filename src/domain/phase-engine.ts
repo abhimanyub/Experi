@@ -7,8 +7,25 @@ export function sortPhases(phases: Phase[]): Phase[] {
   return [...phases].sort((a, b) => a.sequence - b.sequence);
 }
 
-export function currentPhase(phases: Phase[]): Phase | null {
-  return sortPhases(phases).find((p) => p.startedAt !== null && p.endedAt === null) ?? null;
+/**
+ * The phase currently running. When `now` is given, a phase whose startedAt
+ * lies in the future (scheduled start) is not yet current.
+ */
+export function currentPhase(phases: Phase[], now?: number): Phase | null {
+  return (
+    sortPhases(phases).find(
+      (p) =>
+        p.startedAt !== null && p.endedAt === null && (now === undefined || p.startedAt <= now)
+    ) ?? null
+  );
+}
+
+/** First phase scheduled to start after `now` (future-start experiments). */
+export function upcomingPhase(phases: Phase[], now: number): Phase | null {
+  return (
+    sortPhases(phases).find((p) => p.startedAt !== null && p.startedAt > now && p.endedAt === null) ??
+    null
+  );
 }
 
 export function nextPhase(phases: Phase[]): Phase | null {

@@ -12,16 +12,19 @@ export interface StartResult {
 /**
  * Start a draft experiment. If skipBaseline, baseline phases are removed and
  * the skip is recorded — the verdict screen must show a caveat banner.
+ * startAt (>= now) schedules the start in the future.
  */
 export function startExperiment(
   experiment: Experiment,
   phases: Phase[],
   now: number,
-  opts: { skipBaseline?: boolean } = {}
+  opts: { skipBaseline?: boolean; startAt?: number } = {}
 ): StartResult {
   if (experiment.status !== 'draft') {
     throw new Error(`Cannot start experiment with status "${experiment.status}"`);
   }
+  const startAt = opts.startAt ?? now;
+  if (startAt < now) throw new Error('Start date cannot be in the past');
   let plan = phases;
   if (opts.skipBaseline) {
     plan = phases.filter((p) => p.type !== 'baseline');
@@ -31,10 +34,10 @@ export function startExperiment(
     experiment: {
       ...experiment,
       status: 'active',
-      startedAt: now,
+      startedAt: startAt,
       baselineSkipped: !!opts.skipBaseline,
     },
-    phases: startFirstPhase(plan, now),
+    phases: startFirstPhase(plan, startAt),
   };
 }
 

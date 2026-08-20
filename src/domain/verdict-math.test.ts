@@ -52,6 +52,7 @@ function obs(phaseId: string, value: number, i: number, flagged = false): Observ
     observedAt: T0 + i * DAY_MS,
     backfilled: false,
     flagged,
+    missed: false,
   };
 }
 
@@ -168,5 +169,15 @@ describe('contextLine', () => {
     const m = metric('scale');
     const cmp = compareMetricAcrossPhases(m, [phaseA, phaseB], []);
     expect(contextLine(m, cmp)).toBe('Not enough data to compare phases.');
+  });
+});
+
+describe('missed markers', () => {
+  it('are excluded from all aggregation', () => {
+    const m = metric('scale');
+    const observations = [obs('pa', 3, 0), { ...obs('pa', 0, 1), missed: true }];
+    const s = summarizePhase(m, phaseA, observations);
+    expect(s.n).toBe(1);
+    expect(s.mean).toBe(3);
   });
 });

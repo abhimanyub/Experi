@@ -87,7 +87,7 @@ export function DotChart({
   const ordered = [...phases].sort((a, b) => a.sequence - b.sequence);
   const phaseIndex = new Map(ordered.map((p, i) => [p.id, i]));
   const obs = observations
-    .filter((o) => o.metricId === metric.id)
+    .filter((o) => o.metricId === metric.id && !o.missed)
     .sort((a, b) => a.observedAt - b.observedAt);
 
   if (obs.length === 0) {

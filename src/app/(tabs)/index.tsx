@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DateBar, startOfDay } from '@/components/date-bar';
 import { ExperimentCard } from '@/components/experiment-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -24,6 +25,10 @@ export default function TodayScreen() {
   const colors = useTheme();
   const queryClient = useQueryClient();
   const now = Date.now();
+  const [selectedDay, setSelectedDay] = useState(() => startOfDay(Date.now()));
+  const isToday = selectedDay === startOfDay(now);
+  // Log at "now" for today; midday for a past day (clearly backdated, phase-resolved).
+  const observedAtFor = () => (isToday ? Date.now() : selectedDay + 12 * 60 * 60 * 1000);
 
   useEffect(() => {
     ensureNotificationSetup();
@@ -33,8 +38,8 @@ export default function TodayScreen() {
   }, [queryClient]);
 
   const { data: bundles = [], isLoading } = useQuery({
-    queryKey: ['active-experiments'],
-    queryFn: () => getActiveExperiments(Date.now()),
+    queryKey: ['active-experiments', selectedDay],
+    queryFn: () => getActiveExperiments(Date.now(), selectedDay),
   });
 
   // Keep local reminders in sync with whatever is currently active —
@@ -56,9 +61,11 @@ export default function TodayScreen() {
   });
 
   const logMutation = useMutation({
-    mutationFn: (params: { metricId: string; value: number }) =>
-      logObservation({ ...params, now: Date.now() }),
+    mutationFn: (params: { metricId: string; value: number; missed?: boolean }) =>
+      logObservation({ ...params, now: Date.now(), observedAt: observedAtFor() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['active-experiments'] }),
+    onError: (e) =>
+      Alert.alert('Could not log', e instanceof Error ? e.message : 'Something went wrong.'),
   });
 
   const refreshBoth = () => {
@@ -104,15 +111,17 @@ export default function TodayScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>
           <View style={styles.heading}>
-            <ThemedText type="title">Today</ThemedText>
+            <ThemedText type="title">{isToday ? 'Today' : 'Catch up'}</ThemedText>
             <ThemedText type="small" style={{ color: colors.textSecondary }}>
-              {new Date(now).toLocaleDateString(undefined, {
+              {new Date(selectedDay).toLocaleDateString(undefined, {
                 weekday: 'long',
                 month: 'long',
                 day: 'numeric',
               })}
             </ThemedText>
           </View>
+
+          <DateBar now={now} selected={selectedDay} onSelect={setSelectedDay} />
 
           {bundles.length === 0 && !isLoading && (
             <ThemedView type="backgroundElement" style={styles.empty}>
@@ -135,7 +144,9 @@ export default function TodayScreen() {
               key={b.experiment.id}
               bundle={b}
               now={now}
+              isToday={isToday}
               onLog={(metricId, value) => logMutation.mutate({ metricId, value })}
+              onMiss={(metricId) => logMutation.mutate({ metricId, value: 0, missed: true })}
             />
           ))}
 

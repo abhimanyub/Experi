@@ -1,5 +1,5 @@
-// Active experiment card on Today: title, phase progress, check-in button,
-// quick-log rows with clear done states.
+// Active experiment card on Today: title, phase progress, glass-fill,
+// check-in button (today only), quick-log rows, future-start + verdict states.
 
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -11,23 +11,32 @@ import { ThemedView } from '@/components/themed-view';
 import { ArchetypeIdentity } from '@/constants/archetypes';
 import { Spacing } from '@/constants/theme';
 import { ActiveExperimentBundle } from '@/db/repo';
-import { actualDays } from '@/domain/phase-engine';
+import { actualDays, allPhasesDone } from '@/domain/phase-engine';
 import { useTheme } from '@/hooks/use-theme';
 
 interface Props {
   bundle: ActiveExperimentBundle;
   now: number;
+  isToday: boolean; // viewing today vs a past day on the date bar
   onLog: (metricId: string, value: number) => void;
+  onMiss: (metricId: string) => void;
 }
 
-export function ExperimentCard({ bundle, now, onLog }: Props) {
+export function ExperimentCard({ bundle, now, isToday, onLog, onMiss }: Props) {
   const router = useRouter();
   const colors = useTheme();
-  const { experiment, activePhase, metrics, todayCounts } = bundle;
+  const { experiment, activePhase, upcomingPhase, phases, metrics, todayCounts, missedCounts } =
+    bundle;
 
   const phaseInfo = activePhase
     ? `${activePhase.label} — day ${actualDays(activePhase, now) + 1} of ${activePhase.plannedDays}`
-    : 'All phases done — verdict pending';
+    : upcomingPhase
+      ? `Starts ${new Date(upcomingPhase.startedAt!).toLocaleDateString(undefined, {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+        })}`
+      : 'All phases done — verdict pending';
 
   const scheduled = metrics.filter((m) => 'timesPerDay' in m.schedule);
   const doneCount = scheduled.filter(
@@ -35,6 +44,7 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
   ).length;
   const allDone = scheduled.length > 0 && doneCount === scheduled.length;
   const fillFraction = scheduled.length > 0 ? doneCount / scheduled.length : 0;
+  const finished = allPhasesDone(phases);
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
@@ -61,7 +71,7 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
         </View>
       </Pressable>
 
-      {!activePhase && (
+      {finished && (
         <Pressable
           onPress={() => router.push(`/verdict/${experiment.id}` as never)}
           style={({ pressed }) => [
@@ -74,7 +84,7 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
         </Pressable>
       )}
 
-      {activePhase && !allDone && scheduled.length > 0 && (
+      {isToday && activePhase && !allDone && scheduled.length > 0 && (
         <Pressable
           onPress={() => router.push(`/checkin/${experiment.id}` as never)}
           style={({ pressed }) => [
@@ -87,16 +97,22 @@ export function ExperimentCard({ bundle, now, onLog }: Props) {
         </Pressable>
       )}
 
-      <View style={styles.rows}>
-        {metrics.map((m) => (
-          <QuickLogRow
-            key={m.id}
-            metric={m}
-            loggedToday={todayCounts[m.id] ?? 0}
-            onLog={(value) => onLog(m.id, value)}
-          />
-        ))}
-      </View>
+      {(activePhase || !isToday) && !upcomingPhase && !finished && (
+        <View style={styles.rows}>
+          {metrics.map((m) => (
+            <QuickLogRow
+              key={m.id}
+              metric={m}
+              loggedToday={todayCounts[m.id] ?? 0}
+              missedCount={missedCounts[m.id] ?? 0}
+              onLog={(value) => onLog(m.id, value)}
+              onMiss={
+                !isToday && (todayCounts[m.id] ?? 0) === 0 ? () => onMiss(m.id) : undefined
+              }
+            />
+          ))}
+        </View>
+      )}
     </ThemedView>
   );
 }

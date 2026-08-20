@@ -4,7 +4,11 @@ import { useEffect, useState } from 'react';
 import { initWebDb } from './client.web';
 // Inline-imported by babel-plugin-inline-import (.sql in extensions).
 // @ts-expect-error raw sql import
-import migrationSql from './migrations/0000_bumpy_meggan.sql';
+import migration0 from './migrations/0000_bumpy_meggan.sql';
+// @ts-expect-error raw sql import
+import migration1 from './migrations/0001_pretty_starfox.sql';
+
+const migrationSql = [migration0, migration1].join('\n--> statement-breakpoint\n');
 
 export function useDbReady(): { success: boolean; error: Error | undefined } {
   const [success, setSuccess] = useState(false);

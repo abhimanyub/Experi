@@ -1,0 +1,1 @@
+ALTER TABLE `observations` ADD `missed` integer DEFAULT false NOT NULL;

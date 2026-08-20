@@ -45,7 +45,10 @@ export function summarizePhase(
   opts: { excludeFlagged?: boolean; now?: number } = {}
 ): PhaseSummary {
   const now = opts.now ?? phase.endedAt ?? phase.startedAt ?? 0;
-  const inPhase = observations.filter((o) => o.metricId === metric.id && o.phaseId === phase.id);
+  // Missed markers are bookkeeping, never data.
+  const inPhase = observations.filter(
+    (o) => o.metricId === metric.id && o.phaseId === phase.id && !o.missed
+  );
   const flaggedCount = inPhase.filter((o) => o.flagged).length;
   const included = opts.excludeFlagged ? inPhase.filter((o) => !o.flagged) : inPhase;
 

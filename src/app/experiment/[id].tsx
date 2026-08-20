@@ -270,7 +270,7 @@ export default function ExperimentDetailScreen() {
                         ? { fontStyle: 'italic', color: colors.textSecondary }
                         : undefined
                     }>
-                    {metricName(o.metricId)}: {o.value}
+                    {o.missed ? `${metricName(o.metricId)}: missed` : `${metricName(o.metricId)}: ${o.value}`}
                     {o.flagged ? ' ⚑' : ''}
                     {o.backfilled ? ' · backfilled' : ''}
                   </ThemedText>

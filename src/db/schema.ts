@@ -66,6 +66,7 @@ export const observations = sqliteTable('observations', {
   observedAt: integer('observed_at').notNull(),
   backfilled: integer('backfilled', { mode: 'boolean' }).notNull().default(false),
   flagged: integer('flagged', { mode: 'boolean' }).notNull().default(false),
+  missed: integer('missed', { mode: 'boolean' }).notNull().default(false),
 });
 
 export const confounders = sqliteTable('confounders', {
