@@ -1,5 +1,5 @@
-// Last-7-days bar (Todoist/Notion-Calendar style): pick a day to review it,
-// log for it, or mark it missed. Selected day fills with the tint.
+// Todoist-style week strip: month label, weekday letters over day numbers,
+// today/selected in a filled red circle, activity dots under days with logs.
 
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -16,10 +16,12 @@ export function startOfDay(t: number): number {
 export function DateBar({
   now,
   selected,
+  activity = {},
   onSelect,
 }: {
   now: number;
   selected: number; // startOfDay ms
+  activity?: Record<number, boolean>;
   onSelect: (dayStart: number) => void;
 }) {
   const colors = useTheme();
@@ -27,47 +29,77 @@ export function DateBar({
   const days = Array.from({ length: 7 }, (_, i) => today - (6 - i) * DAY_MS);
 
   return (
-    <View style={styles.row}>
-      {days.map((d) => {
-        const date = new Date(d);
-        const isSelected = d === selected;
-        const isToday = d === today;
-        return (
-          <Pressable
-            key={d}
-            onPress={() => onSelect(d)}
-            style={[
-              styles.day,
-              { backgroundColor: isSelected ? colors.tint : colors.backgroundElement },
-              isToday && !isSelected && { borderWidth: 1.5, borderColor: colors.tint },
-            ]}>
-            <ThemedText
-              type="small"
-              style={{ color: isSelected ? colors.onTint : colors.textSecondary, fontSize: 10 }}>
-              {date.toLocaleDateString(undefined, { weekday: 'narrow' })}
-            </ThemedText>
-            <ThemedText
-              type="smallBold"
-              style={isSelected ? { color: colors.onTint } : undefined}>
-              {date.getDate()}
-            </ThemedText>
-          </Pressable>
-        );
-      })}
+    <View style={styles.container}>
+      <ThemedText type="smallBold" style={{ color: colors.textSecondary }}>
+        {new Date(selected).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+      </ThemedText>
+      <View style={styles.row}>
+        {days.map((d) => {
+          const date = new Date(d);
+          const isSelected = d === selected;
+          const isToday = d === today;
+          return (
+            <Pressable key={d} onPress={() => onSelect(d)} style={styles.day} hitSlop={4}>
+              <ThemedText
+                type="small"
+                style={{ color: colors.textSecondary, fontSize: 10, letterSpacing: 1 }}>
+                {date.toLocaleDateString(undefined, { weekday: 'narrow' }).toUpperCase()}
+              </ThemedText>
+              <View
+                style={[
+                  styles.numCircle,
+                  isSelected && { backgroundColor: colors.tint },
+                  !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.tint },
+                ]}>
+                <ThemedText
+                  type="smallBold"
+                  style={
+                    isSelected
+                      ? { color: colors.onTint }
+                      : isToday
+                        ? { color: colors.tint }
+                        : undefined
+                  }>
+                  {date.getDate()}
+                </ThemedText>
+              </View>
+              <View
+                style={[
+                  styles.activityDot,
+                  { backgroundColor: activity[d] ? colors.tint : 'transparent' },
+                ]}
+              />
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    gap: Spacing.one,
+  },
   row: {
     flexDirection: 'row',
-    gap: Spacing.one,
+    justifyContent: 'space-between',
   },
   day: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Spacing.one + 2,
-    borderRadius: Spacing.two + 2,
-    gap: 1,
+    gap: 3,
+  },
+  numCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
 });

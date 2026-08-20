@@ -1,0 +1,171 @@
+// Reminder times editor (Todoist-picker inspired, inline): existing times as
+// removable chips, quick presets, and a compact hour/minute custom picker.
+
+import { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
+
+import { ThemedText } from '@/components/themed-text';
+import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+
+const PRESETS: { label: string; time: string }[] = [
+  { label: '☀️ 08:00', time: '08:00' },
+  { label: '🕛 12:00', time: '12:00' },
+  { label: '🌆 18:00', time: '18:00' },
+  { label: '🌙 21:00', time: '21:00' },
+];
+const MINUTES = ['00', '15', '30', '45'];
+
+export function TimesEditor({
+  times,
+  onChange,
+}: {
+  times: string[];
+  onChange: (times: string[]) => void;
+}) {
+  const colors = useTheme();
+  const [customOpen, setCustomOpen] = useState(false);
+  const [hour, setHour] = useState(9);
+  const [minute, setMinute] = useState('00');
+
+  const add = (time: string) => {
+    if (times.includes(time)) return;
+    onChange([...times, time].sort());
+  };
+  const remove = (time: string) => onChange(times.filter((t) => t !== time));
+
+  return (
+    <View style={styles.container}>
+      {/* current times */}
+      <View style={styles.chipRow}>
+        {times.length === 0 && (
+          <ThemedText type="small" style={{ color: colors.textSecondary }}>
+            No reminders yet — add one below.
+          </ThemedText>
+        )}
+        {times.map((time) => (
+          <Pressable
+            key={time}
+            onPress={() => remove(time)}
+            style={[styles.timeChip, { backgroundColor: colors.tintSoft }]}>
+            <ThemedText type="smallBold" style={{ color: colors.tint }}>
+              {time} ✕
+            </ThemedText>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* quick presets */}
+      <View style={styles.chipRow}>
+        {PRESETS.filter((p) => !times.includes(p.time)).map((p) => (
+          <Pressable
+            key={p.time}
+            onPress={() => add(p.time)}
+            style={[styles.presetChip, { backgroundColor: colors.backgroundSelected }]}>
+            <ThemedText type="small">{p.label}</ThemedText>
+          </Pressable>
+        ))}
+        <Pressable
+          onPress={() => setCustomOpen((o) => !o)}
+          style={[styles.presetChip, { backgroundColor: colors.backgroundSelected }]}>
+          <ThemedText type="small">{customOpen ? 'Close' : '+ Custom'}</ThemedText>
+        </Pressable>
+      </View>
+
+      {/* custom hour/minute */}
+      {customOpen && (
+        <View style={styles.customRow}>
+          <Pressable
+            onPress={() => setHour((h) => (h + 23) % 24)}
+            style={[styles.stepBtn, { backgroundColor: colors.backgroundSelected }]}>
+            <ThemedText type="smallBold">−</ThemedText>
+          </Pressable>
+          <ThemedText type="smallBold" style={styles.hourLabel}>
+            {String(hour).padStart(2, '0')}
+          </ThemedText>
+          <Pressable
+            onPress={() => setHour((h) => (h + 1) % 24)}
+            style={[styles.stepBtn, { backgroundColor: colors.backgroundSelected }]}>
+            <ThemedText type="smallBold">+</ThemedText>
+          </Pressable>
+          {MINUTES.map((m) => (
+            <Pressable
+              key={m}
+              onPress={() => setMinute(m)}
+              style={[
+                styles.minChip,
+                {
+                  backgroundColor:
+                    minute === m ? colors.tint : colors.backgroundSelected,
+                },
+              ]}>
+              <ThemedText
+                type="small"
+                style={minute === m ? { color: colors.onTint } : undefined}>
+                :{m}
+              </ThemedText>
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={() => {
+              add(`${String(hour).padStart(2, '0')}:${minute}`);
+              setCustomOpen(false);
+            }}
+            style={[styles.addBtn, { backgroundColor: colors.tint }]}>
+            <ThemedText type="smallBold" style={{ color: colors.onTint }}>
+              Add
+            </ThemedText>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { gap: Spacing.one },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+    alignItems: 'center',
+  },
+  timeChip: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 999,
+  },
+  presetChip: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 999,
+  },
+  customRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
+  stepBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hourLabel: {
+    minWidth: 28,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  minChip: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 999,
+  },
+  addBtn: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    borderRadius: 999,
+  },
+});

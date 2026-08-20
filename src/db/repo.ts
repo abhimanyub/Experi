@@ -104,6 +104,20 @@ export async function getActiveExperiments(
   });
 }
 
+/** Which of the last `days` days have at least one logged observation (dots on the date bar). */
+export async function getActivityDays(now: number, days = 7): Promise<Record<number, boolean>> {
+  const end = new Date(now).setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000;
+  const start = end - days * 24 * 60 * 60 * 1000;
+  const rows = await db.select().from(t.observations);
+  const activity: Record<number, boolean> = {};
+  for (const o of rows) {
+    if (o.observedAt >= start && o.observedAt < end) {
+      activity[new Date(o.observedAt).setHours(0, 0, 0, 0)] = true;
+    }
+  }
+  return activity;
+}
+
 export async function getMetric(metricId: string): Promise<Metric | null> {
   const rows = await db.select().from(t.metrics).where(eq(t.metrics.id, metricId)).limit(1);
   return rows[0] ? metricFromRow(rows[0]) : null;

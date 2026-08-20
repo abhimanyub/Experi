@@ -12,6 +12,7 @@ import { BottomTabInset, Colors, MaxContentWidth, Spacing } from '@/constants/th
 import {
   deleteDraft,
   getActiveExperiments,
+  getActivityDays,
   getDraftExperiments,
   logObservation,
   startDraft,
@@ -60,10 +61,18 @@ export default function TodayScreen() {
     queryFn: getDraftExperiments,
   });
 
+  const { data: activity = {} } = useQuery({
+    queryKey: ['activity-days', bundles.length],
+    queryFn: () => getActivityDays(Date.now()),
+  });
+
   const logMutation = useMutation({
     mutationFn: (params: { metricId: string; value: number; missed?: boolean }) =>
       logObservation({ ...params, now: Date.now(), observedAt: observedAtFor() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['active-experiments'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-days'] });
+    },
     onError: (e) =>
       Alert.alert('Could not log', e instanceof Error ? e.message : 'Something went wrong.'),
   });
@@ -121,7 +130,7 @@ export default function TodayScreen() {
             </ThemedText>
           </View>
 
-          <DateBar now={now} selected={selectedDay} onSelect={setSelectedDay} />
+          <DateBar now={now} selected={selectedDay} activity={activity} onSelect={setSelectedDay} />
 
           {bundles.length === 0 && !isLoading && (
             <ThemedView type="backgroundElement" style={styles.empty}>
