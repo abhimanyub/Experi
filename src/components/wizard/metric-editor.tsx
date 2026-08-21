@@ -3,7 +3,7 @@
 // chip-based time picker. Cap 4 metrics — more metrics = mushier verdicts.
 
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,6 +16,7 @@ import {
   NumericConfig,
   ScaleConfig,
 } from '@/domain/types';
+import { ensureNotificationSetup } from '@/lib/notifications';
 import { useTheme } from '@/hooks/use-theme';
 import { ChipRow } from './chips';
 import { TimesEditor } from './time-picker';
@@ -90,11 +91,19 @@ export function MetricEditor({
 }) {
   const colors = useTheme();
   const [expanded, setExpanded] = useState<number>(metrics.length > 0 ? -1 : 0);
+  // Contextual permission ask: fires the first time the user opts into daily
+  // reminders — the one moment the system prompt makes sense.
+  const [remindersBlocked, setRemindersBlocked] = useState(false);
 
   const update = (i: number, patch: Partial<NewMetricInput>) => {
     const next = [...metrics];
     next[i] = { ...next[i], ...patch };
     onChange(next);
+  };
+
+  const requestReminderPermission = () => {
+    if (Platform.OS === 'web') return;
+    ensureNotificationSetup().then((granted) => setRemindersBlocked(!granted));
   };
 
   return (
@@ -103,7 +112,12 @@ export function MetricEditor({
         const isOpen = expanded === i;
         if (!isOpen) {
           return (
-            <Pressable key={i} onPress={() => setExpanded(i)}>
+            <Pressable
+              key={i}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit metric ${m.name.trim() || 'untitled'}`}
+              onPress={() => setExpanded(i)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
               <ThemedView type="backgroundElement" style={styles.collapsedCard}>
                 <View style={{ flexShrink: 1, gap: 2 }}>
                   <ThemedText type="smallBold">
@@ -131,7 +145,12 @@ export function MetricEditor({
                 style={[styles.nameInput, { color: colors.text }]}
                 autoFocus={m.name === ''}
               />
-              <Pressable onPress={() => setExpanded(-1)} hitSlop={8}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Done editing metric"
+                onPress={() => setExpanded(-1)}
+                hitSlop={12}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
                 <ThemedText type="smallBold" style={{ color: colors.tint }}>
                   Done
                 </ThemedText>
@@ -247,14 +266,15 @@ export function MetricEditor({
                 { value: 'on_demand', label: 'On demand' },
               ]}
               value={'onDemand' in m.schedule ? 'on_demand' : 'scheduled'}
-              onChange={(v) =>
+              onChange={(v) => {
+                if (v === 'scheduled') requestReminderPermission();
                 update(i, {
                   schedule:
                     v === 'on_demand'
                       ? { onDemand: true }
                       : { timesPerDay: 1, remindAt: ['20:00'] },
-                })
-              }
+                });
+              }}
             />
             {'remindAt' in m.schedule && (
               <TimesEditor
@@ -264,13 +284,22 @@ export function MetricEditor({
                 }
               />
             )}
+            {'remindAt' in m.schedule && remindersBlocked && (
+              <ThemedText type="small" style={{ color: colors.warning }}>
+                Notifications are off for this app — these reminder times won’t fire. Enable
+                notifications in Settings to get them.
+              </ThemedText>
+            )}
 
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove metric ${m.name.trim() || 'untitled'}`}
+              hitSlop={8}
               onPress={() => {
                 onChange(metrics.filter((_, j) => j !== i));
                 setExpanded(-1);
               }}
-              style={styles.removeRow}>
+              style={({ pressed }) => [styles.removeRow, { opacity: pressed ? 0.6 : 1 }]}>
               <ThemedText type="small" style={{ color: colors.tint }}>
                 Remove metric
               </ThemedText>
@@ -281,11 +310,15 @@ export function MetricEditor({
 
       {metrics.length < MAX_METRICS ? (
         <Pressable
+          accessibilityRole="button"
           onPress={() => {
             onChange([...metrics, defaultMetric(metrics)]);
             setExpanded(metrics.length);
           }}
-          style={[styles.addButton, { backgroundColor: colors.backgroundElement }]}>
+          style={({ pressed }) => [
+            styles.addButton,
+            { backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement },
+          ]}>
           <ThemedText type="smallBold">+ Add metric</ThemedText>
         </Pressable>
       ) : (

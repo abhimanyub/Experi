@@ -4,7 +4,7 @@
 
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -25,11 +25,17 @@ export default function AiDraftScreen() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
   const copyPrompt = async () => {
     tapFeedback();
     await Clipboard.setStringAsync(buildPrompt(idea));
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const pasteFromClipboard = async () => {
@@ -67,11 +73,12 @@ export default function AiDraftScreen() {
         </ThemedView>
 
         <Pressable
+          accessibilityRole="button"
           disabled={!idea.trim()}
           onPress={copyPrompt}
-          style={[
+          style={({ pressed }) => [
             styles.primaryButton,
-            { backgroundColor: colors.tint, opacity: idea.trim() ? 1 : 0.4 },
+            { backgroundColor: colors.tint, opacity: !idea.trim() ? 0.4 : pressed ? 0.85 : 1 },
           ]}>
           <ThemedText type="smallBold" style={{ color: colors.onTint }}>
             {copied ? 'Copied ✓' : 'Copy prompt for Claude'}
@@ -97,24 +104,29 @@ export default function AiDraftScreen() {
             multiline
           />
         </ThemedView>
-        <Pressable onPress={pasteFromClipboard} style={styles.linkButton}>
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={pasteFromClipboard}
+          style={({ pressed }) => [styles.linkButton, { opacity: pressed ? 0.6 : 1 }]}>
           <ThemedText type="small" style={{ color: colors.tint }}>
             Paste from clipboard
           </ThemedText>
         </Pressable>
 
         {error && (
-          <ThemedText type="small" style={{ color: colors.textSecondary }}>
+          <ThemedText type="small" accessibilityRole="alert" style={{ color: colors.warning }}>
             ⚠︎ {error}
           </ThemedText>
         )}
 
         <Pressable
+          accessibilityRole="button"
           disabled={!pasted.trim()}
           onPress={createDraft}
-          style={[
+          style={({ pressed }) => [
             styles.primaryButton,
-            { backgroundColor: colors.tint, opacity: pasted.trim() ? 1 : 0.4 },
+            { backgroundColor: colors.tint, opacity: !pasted.trim() ? 0.4 : pressed ? 0.85 : 1 },
           ]}>
           <ThemedText type="smallBold" style={{ color: colors.onTint }}>
             Review in wizard

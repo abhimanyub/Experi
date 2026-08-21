@@ -16,6 +16,11 @@ if (Platform.OS !== 'web') {
   });
 }
 
+/**
+ * Ask for notification permission. Call this at the moment reminders become
+ * real to the user (choosing "Daily reminders", starting an experiment with
+ * reminder times) — never at cold launch with zero context.
+ */
 export async function ensureNotificationSetup(): Promise<boolean> {
   if (Platform.OS === 'web') return false; // local scheduling is native-only in v1
   if (Platform.OS === 'android') {
@@ -26,6 +31,13 @@ export async function ensureNotificationSetup(): Promise<boolean> {
     });
   }
   const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
+}
+
+/** Current permission state without prompting. */
+export async function notificationsAllowed(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  const { status } = await Notifications.getPermissionsAsync();
   return status === 'granted';
 }
 
@@ -66,11 +78,14 @@ export async function scheduleMetricReminders(
   return ids;
 }
 
-/** Cancel everything and reschedule from the current set of active metrics. */
+/** Cancel everything and reschedule from the current set of active metrics.
+ * No-op when permission was denied — scheduling doomed notifications would
+ * only make the ⏰ UI lie about reminders arriving. */
 export async function rescheduleAll(
   items: { metric: Metric; experimentTitle: string }[]
 ): Promise<void> {
   if (Platform.OS === 'web') return;
+  if (!(await notificationsAllowed())) return;
   await Notifications.cancelAllScheduledNotificationsAsync();
   for (const { metric, experimentTitle } of items) {
     await scheduleMetricReminders(metric, experimentTitle);

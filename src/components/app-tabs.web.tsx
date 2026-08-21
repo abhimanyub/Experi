@@ -51,9 +51,17 @@ export function CustomTabList(props: TabListProps) {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
 
+  // The floating pill is a real material: semi-transparent ground +
+  // backdrop blur, so content visibly passes underneath it.
+  const material = {
+    backgroundColor: colors.backgroundElement + 'CC',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  } as const;
+
   return (
     <View {...props} style={styles.tabListContainer}>
-      <ThemedView type="backgroundElement" style={styles.innerContainer}>
+      <View style={[styles.innerContainer, material as object]}>
         <ThemedText type="smallBold" style={styles.brandText}>
           Red Glass
         </ThemedText>
@@ -70,7 +78,7 @@ export function CustomTabList(props: TabListProps) {
             />
           </Pressable>
         </ExternalLink>
-      </ThemedView>
+      </View>
     </View>
   );
 }

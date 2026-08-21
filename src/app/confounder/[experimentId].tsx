@@ -13,6 +13,7 @@ import { ChipRow } from '@/components/wizard/chips';
 import { Spacing } from '@/constants/theme';
 import { addConfounder } from '@/db/repo';
 import { DAY_MS } from '@/domain/types';
+import { successFeedback } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
 
 type StartChoice = 'now' | 'today' | 'yesterday' | 'two_days';
@@ -45,6 +46,7 @@ export default function ConfounderSheet() {
       });
     },
     onSuccess: () => {
+      successFeedback();
       queryClient.invalidateQueries({ queryKey: ['experiment-detail', experimentId] });
       queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
       router.back();
@@ -102,6 +104,7 @@ export default function ConfounderSheet() {
 
       <View style={{ flex: 1 }} />
       <Pressable
+        accessibilityRole="button"
         disabled={!valid || save.isPending}
         onPress={() => save.mutate()}
         style={({ pressed }) => [

@@ -2,8 +2,8 @@
 // template → hypothesis → metrics → phases → review. Start now or save as draft.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useNavigation, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -28,7 +29,9 @@ import { buildAlternatingPhases } from '@/domain/phase-engine';
 import { TEMPLATE_EMOJI } from '@/constants/archetypes';
 import { Archetype, MIN_PHASE_DAYS } from '@/domain/types';
 import { useAiDraftStore } from '@/lib/ai-draft-store';
-import { rescheduleAll } from '@/lib/notifications';
+import { confirmAction, showError } from '@/lib/confirm';
+import { successFeedback } from '@/lib/haptics';
+import { ensureNotificationSetup, rescheduleAll } from '@/lib/notifications';
 import { ChipRow } from '@/components/wizard/chips';
 import { MetricEditor } from '@/components/wizard/metric-editor';
 import { PhaseEditor } from '@/components/wizard/phase-editor';
@@ -47,6 +50,7 @@ const STEP_TITLES: Record<Step, string> = {
 
 export default function NewExperimentWizard() {
   const router = useRouter();
+  const navigation = useNavigation();
   const colors = useTheme();
   const queryClient = useQueryClient();
 
@@ -60,6 +64,31 @@ export default function NewExperimentWizard() {
   const [aiArchetype, setAiArchetype] = useState<Archetype | null>(null);
   const [baselineMode, setBaselineMode] = useState<'phase' | 'current'>('phase');
   const [startWhen, setStartWhen] = useState<'now' | 'tomorrow' | 'in2days'>('now');
+
+  // A swipe-down or back gesture on the modal shouldn't silently eat typed
+  // work. Saving (draft or start) sets doneRef so the guard steps aside.
+  const doneRef = useRef(false);
+  const dirtyRef = useRef(false);
+  dirtyRef.current =
+    !doneRef.current &&
+    (title.trim().length > 0 || hypothesis.trim().length > 0 || template !== null);
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      // doneRef is checked directly: a successful save navigates back in the
+      // same tick it sets the flag, before any re-render updates dirtyRef.
+      if (doneRef.current || !dirtyRef.current) return;
+      e.preventDefault();
+      confirmAction({
+        title: 'Discard this experiment?',
+        message: 'Nothing has been saved yet. You can also save it as a draft from Review.',
+        confirmText: 'Discard',
+        destructive: true,
+      }).then((ok) => {
+        if (ok) navigation.dispatch(e.data.action);
+      });
+    });
+    return () => sub();
+  }, [navigation]);
 
   // Prefill from an AI draft handed over by /ai-draft, landing on review.
   const aiDraft = useAiDraftStore((s) => s.draft);
@@ -142,17 +171,35 @@ export default function NewExperimentWizard() {
         skipBaseline,
         startAt: resolveStartAt(),
       });
+      // The moment reminders become real is the right moment to ask for
+      // notification permission — with the experiment as visible context.
+      const wantsReminders = metrics.some(
+        (m) => 'remindAt' in m.schedule && m.schedule.remindAt.length > 0
+      );
+      let remindersBlocked = false;
+      if (start && wantsReminders && Platform.OS !== 'web') {
+        remindersBlocked = !(await ensureNotificationSetup());
+      }
       const bundles = await getActiveExperiments(Date.now());
       await rescheduleAll(
         bundles.flatMap((b) =>
           b.metrics.map((metric) => ({ metric, experimentTitle: b.experiment.title }))
         )
       );
+      return { remindersBlocked };
     },
-    onSuccess: () => {
+    onSuccess: ({ remindersBlocked }) => {
+      doneRef.current = true;
+      successFeedback();
       queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
       queryClient.invalidateQueries({ queryKey: ['draft-experiments'] });
       router.back();
+      if (remindersBlocked) {
+        showError(
+          'Reminders are off',
+          'The experiment started, but notifications are disabled for this app — reminder times won’t fire. Enable notifications in Settings to get them.'
+        );
+      }
     },
   });
 
@@ -161,6 +208,17 @@ export default function NewExperimentWizard() {
     // "Current state is my baseline" was an explicit choice — no nagging alert.
     if (hasBaseline || baselineMode === 'current') {
       create.mutate(true);
+      return;
+    }
+    if (Platform.OS === 'web') {
+      // Alert.alert is a silent no-op on web — same warning, two choices.
+      confirmAction({
+        title: 'No baseline phase',
+        message:
+          'Without a baseline you lose your before/after comparison. The verdict will carry a caveat.',
+        confirmText: 'Start anyway',
+        destructive: true,
+      }).then((ok) => (ok ? create.mutate(true) : setStep('phases')));
       return;
     }
     Alert.alert(
@@ -210,7 +268,11 @@ export default function NewExperimentWizard() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
     <ThemedView style={{ flex: 1 }}>
       {/* progress header */}
-      <View style={styles.progressRow}>
+      <View
+        style={styles.progressRow}
+        accessibilityRole="progressbar"
+        accessibilityLabel="Wizard progress"
+        accessibilityValue={{ min: 0, max: STEPS.length, now: stepIndex + 1 }}>
         {STEPS.map((s, i) => (
           <View
             key={s}
@@ -228,10 +290,19 @@ export default function NewExperimentWizard() {
       </ThemedText>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Animated.View
+          key={step}
+          entering={FadeIn.duration(180)}
+          exiting={FadeOut.duration(120)}
+          style={styles.stepContent}>
         {step === 'template' && (
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/ai-draft' as never)}
-            style={[styles.aiButton, { backgroundColor: colors.tintSoft }]}>
+            style={({ pressed }) => [
+              styles.aiButton,
+              { backgroundColor: colors.tintSoft, opacity: pressed ? 0.7 : 1 },
+            ]}>
             <ThemedText type="smallBold" style={{ color: colors.tint }}>
               ✨ Draft with Claude
             </ThemedText>
@@ -244,12 +315,14 @@ export default function NewExperimentWizard() {
           TEMPLATES.map((tpl) => (
             <Pressable
               key={tpl.key}
+              accessibilityRole="button"
+              accessibilityState={{ selected: template?.key === tpl.key }}
               onPress={() => applyTemplate(tpl)}
-              style={[
+              style={({ pressed }) => [
                 styles.templateRow,
                 {
                   backgroundColor:
-                    template?.key === tpl.key
+                    template?.key === tpl.key || pressed
                       ? colors.backgroundSelected
                       : colors.backgroundElement,
                 },
@@ -316,8 +389,17 @@ export default function NewExperimentWizard() {
             )}
             {template?.phases.some((p) => p.optional) && (
               <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: includeOptional }}
                 onPress={toggleOptionalPhases}
-                style={[styles.optionRow, { backgroundColor: colors.backgroundElement }]}>
+                style={({ pressed }) => [
+                  styles.optionRow,
+                  {
+                    backgroundColor: pressed
+                      ? colors.backgroundSelected
+                      : colors.backgroundElement,
+                  },
+                ]}>
                 <ThemedText type="small">
                   {includeOptional ? '☑' : '☐'} Include optional phases (
                   {template.phases
@@ -330,8 +412,16 @@ export default function NewExperimentWizard() {
             )}
             {template?.alternating && (
               <Pressable
+                accessibilityRole="button"
                 onPress={applyAlternating}
-                style={[styles.optionRow, { backgroundColor: colors.backgroundElement }]}>
+                style={({ pressed }) => [
+                  styles.optionRow,
+                  {
+                    backgroundColor: pressed
+                      ? colors.backgroundSelected
+                      : colors.backgroundElement,
+                  },
+                ]}>
                 <ThemedText type="small">
                   Switch to alternating A/B/A/B ({template.alternating.rounds}×
                   {template.alternating.daysEach}d each)
@@ -393,6 +483,7 @@ export default function NewExperimentWizard() {
             />
 
             <Pressable
+              accessibilityRole="button"
               disabled={create.isPending}
               onPress={startWithBaselineCheck}
               style={({ pressed }) => [
@@ -412,22 +503,28 @@ export default function NewExperimentWizard() {
               </ThemedText>
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               disabled={create.isPending}
               onPress={() => create.mutate(false)}
-              style={styles.secondaryButton}>
+              style={({ pressed }) => [styles.secondaryButton, { opacity: pressed ? 0.6 : 1 }]}>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
                 Save as draft
               </ThemedText>
             </Pressable>
           </>
         )}
+        </Animated.View>
       </ScrollView>
 
       {/* nav footer */}
       {step !== 'review' && (
         <View style={styles.footer}>
           {stepIndex > 0 ? (
-            <Pressable onPress={() => setStep(STEPS[stepIndex - 1])}>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => setStep(STEPS[stepIndex - 1])}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
                 ← Back
               </ThemedText>
@@ -436,12 +533,13 @@ export default function NewExperimentWizard() {
             <View />
           )}
           <Pressable
+            accessibilityRole="button"
             disabled={!stepValid()}
             onPress={() => setStep(STEPS[stepIndex + 1])}
-            style={[
+            style={({ pressed }) => [
               styles.nextButton,
               {
-                backgroundColor: colors.backgroundElement,
+                backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement,
                 opacity: stepValid() ? 1 : 0.4,
               },
             ]}>
@@ -451,7 +549,11 @@ export default function NewExperimentWizard() {
       )}
       {step === 'review' && (
         <View style={styles.footer}>
-          <Pressable onPress={() => setStep('phases')}>
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => setStep('phases')}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
             <ThemedText type="small" style={{ color: colors.textSecondary }}>
               ← Back
             </ThemedText>
@@ -482,6 +584,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: Spacing.three,
+  },
+  stepContent: {
     gap: Spacing.two,
   },
   templateRow: {

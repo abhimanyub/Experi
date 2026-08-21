@@ -16,6 +16,7 @@ import { VerdictStamp } from '@/components/verdict-stamp';
 import { ArchetypeIdentity } from '@/constants/archetypes';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { cloneExperimentById, exportAllJson, getInsights } from '@/db/repo';
+import { showError } from '@/lib/confirm';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function InsightsScreen() {
@@ -36,15 +37,19 @@ export default function InsightsScreen() {
   });
 
   const exportJson = async () => {
-    const json = await exportAllJson();
-    if (Platform.OS === 'web') {
-      await Clipboard.setStringAsync(json);
-      Alert.alert('Copied', 'Export JSON copied to clipboard (web).');
-      return;
+    try {
+      const json = await exportAllJson();
+      if (Platform.OS === 'web') {
+        await Clipboard.setStringAsync(json);
+        Alert.alert('Copied', 'Export JSON copied to clipboard (web).');
+        return;
+      }
+      const file = new File(Paths.cache, `redglass-export-${Date.now()}.json`);
+      file.write(json);
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/json' });
+    } catch (e) {
+      showError('Export failed', e instanceof Error ? e.message : 'Please try again.');
     }
-    const file = new File(Paths.cache, `redglass-export-${Date.now()}.json`);
-    file.write(json);
-    await Sharing.shareAsync(file.uri, { mimeType: 'application/json' });
   };
 
   return (
@@ -53,7 +58,11 @@ export default function InsightsScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
             <ThemedText type="title">Insights</ThemedText>
-            <Pressable onPress={exportJson}>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={12}
+              onPress={exportJson}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
               <ThemedText type="small" style={{ color: colors.tint }}>
                 Export JSON
               </ThemedText>
@@ -68,8 +77,13 @@ export default function InsightsScreen() {
                 { n: stats.refuted, label: 'refuted' },
                 { n: stats.observations, label: 'observations' },
               ].map((s) => (
-                <ThemedView key={s.label} type="backgroundElement" style={styles.statCell}>
-                  <ThemedText type="subtitle" style={{ color: colors.tint }}>
+                <ThemedView
+                  key={s.label}
+                  type="backgroundElement"
+                  style={styles.statCell}
+                  accessible
+                  accessibilityLabel={`${s.n} ${s.label}`}>
+                  <ThemedText type="headline" style={{ color: colors.tint }}>
                     {s.n}
                   </ThemedText>
                   <ThemedText type="small" style={{ color: colors.textSecondary }}>
@@ -91,10 +105,14 @@ export default function InsightsScreen() {
           )}
 
           {insights.map(({ experiment, verdict, headline }) => (
-            <Pressable
-              key={experiment.id}
-              onPress={() => router.push(`/experiment/${experiment.id}` as never)}>
-              <ThemedView type="backgroundElement" style={styles.entryCard}>
+            /* The card body navigates; the footer's Clone action stays a
+               sibling, not a nested pressable — VoiceOver focus stays sane. */
+            <ThemedView key={experiment.id} type="backgroundElement" style={styles.entryCard}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${experiment.title}. Opens the experiment.`}
+                onPress={() => router.push(`/experiment/${experiment.id}` as never)}
+                style={({ pressed }) => [styles.entryBody, { opacity: pressed ? 0.7 : 1 }]}>
                 <View style={styles.entryHeader}>
                   <ThemedText type="smallBold" style={{ flexShrink: 1 }}>
                     {ArchetypeIdentity[experiment.archetype].emoji} {experiment.title}
@@ -123,21 +141,26 @@ export default function InsightsScreen() {
                     Reason: {experiment.abandonReason}
                   </ThemedText>
                 )}
+              </Pressable>
 
-                <View style={styles.entryFooter}>
-                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                    {experiment.endedAt ? new Date(experiment.endedAt).toLocaleDateString() : ''}
-                    {verdict?.willAdopt === true && ' · change adopted'}
-                    {verdict?.willAdopt === false && ' · change dropped'}
+              <View style={styles.entryFooter}>
+                <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                  {experiment.endedAt ? new Date(experiment.endedAt).toLocaleDateString() : ''}
+                  {verdict?.willAdopt === true && ' · change adopted'}
+                  {verdict?.willAdopt === false && ' · change dropped'}
+                </ThemedText>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Clone and re-run ${experiment.title}`}
+                  hitSlop={12}
+                  onPress={() => clone.mutate(experiment.id)}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                  <ThemedText type="small" style={{ color: colors.tint }}>
+                    Clone & re-run
                   </ThemedText>
-                  <Pressable onPress={() => clone.mutate(experiment.id)}>
-                    <ThemedText type="small" style={{ color: colors.tint }}>
-                      Clone & re-run
-                    </ThemedText>
-                  </Pressable>
-                </View>
-              </ThemedView>
-            </Pressable>
+                </Pressable>
+              </View>
+            </ThemedView>
           ))}
         </ScrollView>
       </SafeAreaView>
@@ -182,6 +205,9 @@ const styles = StyleSheet.create({
   entryCard: {
     borderRadius: Spacing.four,
     padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  entryBody: {
     gap: Spacing.two,
   },
   entryHeader: {

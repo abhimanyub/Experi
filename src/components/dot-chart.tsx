@@ -7,6 +7,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
@@ -84,6 +85,7 @@ export function DotChart({
 }) {
   const colors = useTheme();
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const reducedMotion = useReducedMotion();
   const ordered = [...phases].sort((a, b) => a.sequence - b.sequence);
   const phaseIndex = new Map(ordered.map((p, i) => [p.id, i]));
   const obs = observations
@@ -128,8 +130,13 @@ export function DotChart({
   const x = (t: number) => PAD.left + ((t - tMin) / tSpan) * plotW;
   const y = (v: number) => PAD.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
 
+  const latest = obs[obs.length - 1];
+  const chartSummary =
+    `${metric.name} chart: ${obs.length} observation${obs.length === 1 ? '' : 's'}, ` +
+    `latest ${latest.value} on ${new Date(latest.observedAt).toLocaleDateString()}`;
+
   return (
-    <View>
+    <View accessible accessibilityLabel={chartSummary}>
       <Svg width={width} height={HEIGHT}>
         {/* recessive grid: min/max only */}
         {[yMin, yMax].map((v) => (
@@ -161,7 +168,7 @@ export function DotChart({
           );
         })}
       </Svg>
-      {live && (
+      {live && !reducedMotion && (
         <>
           <Bubble xFraction={0.22} size={5} delay={0} width={width} color={colors.tint} />
           <Bubble xFraction={0.55} size={4} delay={1500} width={width} color={colors.tint} />
@@ -170,10 +177,10 @@ export function DotChart({
       )}
       {/* axis extremes in text tokens, not series color */}
       <View style={[styles.yLabels, { height: HEIGHT }]} pointerEvents="none">
-        <ThemedText type="small" style={{ color: colors.textSecondary, fontSize: 10 }}>
+        <ThemedText type="small" style={{ color: colors.textSecondary, fontSize: 11 }}>
           {yMax}
         </ThemedText>
-        <ThemedText type="small" style={{ color: colors.textSecondary, fontSize: 10 }}>
+        <ThemedText type="small" style={{ color: colors.textSecondary, fontSize: 11 }}>
           {yMin}
         </ThemedText>
       </View>

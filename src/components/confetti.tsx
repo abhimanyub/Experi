@@ -7,6 +7,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withTiming,
@@ -69,6 +70,10 @@ function Piece({ index, scheme }: { index: number; scheme: 'light' | 'dark' }) {
 
 export function ConfettiBurst() {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const reducedMotion = useReducedMotion();
+  // Celebrations degrade to nothing under reduced motion — the check icon
+  // and copy still carry the moment.
+  if (reducedMotion) return null;
   return (
     <View pointerEvents="none" style={styles.container}>
       {Array.from({ length: PIECES }, (_, i) => (

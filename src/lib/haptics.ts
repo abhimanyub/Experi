@@ -18,3 +18,9 @@ export function stampFeedback() {
   if (Platform.OS === 'web') return;
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 }
+
+/** Something went wrong — pairs with an on-screen error, never fires alone. */
+export function errorFeedback() {
+  if (Platform.OS === 'web') return;
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+}

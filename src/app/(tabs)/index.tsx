@@ -8,9 +8,10 @@ import { DateBar, startOfDay } from '@/components/date-bar';
 import { ExperimentCard } from '@/components/experiment-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, Colors, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   deleteDraft,
+  deleteObservation,
   getActiveExperiments,
   getActivityDays,
   getDraftExperiments,
@@ -18,7 +19,8 @@ import {
   startDraft,
   syncPhaseTransitions,
 } from '@/db/repo';
-import { ensureNotificationSetup, rescheduleAll } from '@/lib/notifications';
+import { confirmAction } from '@/lib/confirm';
+import { rescheduleAll } from '@/lib/notifications';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function TodayScreen() {
@@ -31,8 +33,9 @@ export default function TodayScreen() {
   // Log at "now" for today; midday for a past day (clearly backdated, phase-resolved).
   const observedAtFor = () => (isToday ? Date.now() : selectedDay + 12 * 60 * 60 * 1000);
 
+  // Notification permission is requested contextually (when the user first
+  // schedules reminders), never here at cold launch.
   useEffect(() => {
-    ensureNotificationSetup();
     syncPhaseTransitions(Date.now()).then((n) => {
       if (n > 0) queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
     });
@@ -66,15 +69,26 @@ export default function TodayScreen() {
     queryFn: () => getActivityDays(Date.now()),
   });
 
+  // Track the latest quick-log so its row can offer Undo for a few seconds.
+  const [lastLogged, setLastLogged] = useState<{ metricId: string; obsId: string } | null>(null);
+
   const logMutation = useMutation({
     mutationFn: (params: { metricId: string; value: number; missed?: boolean }) =>
       logObservation({ ...params, now: Date.now(), observedAt: observedAtFor() }),
-    onSuccess: () => {
+    onSuccess: (obs) => {
+      setLastLogged({ metricId: obs.metricId, obsId: obs.id });
       queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
       queryClient.invalidateQueries({ queryKey: ['activity-days'] });
     },
-    onError: (e) =>
-      Alert.alert('Could not log', e instanceof Error ? e.message : 'Something went wrong.'),
+  });
+
+  const undoMutation = useMutation({
+    mutationFn: (obsId: string) => deleteObservation(obsId),
+    onSuccess: () => {
+      setLastLogged(null);
+      queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-days'] });
+    },
   });
 
   const refreshBoth = () => {
@@ -96,6 +110,15 @@ export default function TodayScreen() {
   const onStartDraft = (id: string, hasBaseline: boolean) => {
     if (!hasBaseline) {
       startDraftMutation.mutate({ id, skipBaseline: true });
+      return;
+    }
+    if (Platform.OS === 'web') {
+      // Alert.alert is a silent no-op on web; window.confirm carries the choice.
+      // eslint-disable-next-line no-alert
+      const withBaseline = window.confirm(
+        'Begin with the baseline phase?\n\nOK starts the baseline first; Cancel skips it (the verdict will carry a caveat).'
+      );
+      startDraftMutation.mutate({ id, skipBaseline: !withBaseline });
       return;
     }
     Alert.alert('Start experiment', 'Begin with the baseline phase?', [
@@ -156,6 +179,8 @@ export default function TodayScreen() {
               isToday={isToday}
               onLog={(metricId, value) => logMutation.mutate({ metricId, value })}
               onMiss={(metricId) => logMutation.mutate({ metricId, value: 0, missed: true })}
+              undoableMetricId={lastLogged?.metricId ?? null}
+              onUndo={() => lastLogged && undoMutation.mutate(lastLogged.obsId)}
             />
           ))}
 
@@ -177,26 +202,34 @@ export default function TodayScreen() {
                   </View>
                   <View style={styles.draftActions}>
                     <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Start ${d.experiment.title}`}
                       onPress={() =>
                         onStartDraft(
                           d.experiment.id,
                           d.phases.some((p) => p.type === 'baseline')
                         )
                       }
-                      style={[styles.draftButton, { backgroundColor: colors.backgroundSelected }]}>
+                      style={({ pressed }) => [
+                        styles.draftButton,
+                        { backgroundColor: colors.backgroundSelected, opacity: pressed ? 0.7 : 1 },
+                      ]}>
                       <ThemedText type="smallBold">Start</ThemedText>
                     </Pressable>
                     <Pressable
-                      onPress={() =>
-                        Alert.alert('Delete draft?', d.experiment.title, [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Delete',
-                            style: 'destructive',
-                            onPress: () => deleteDraftMutation.mutate(d.experiment.id),
-                          },
-                        ])
-                      }>
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete draft ${d.experiment.title}`}
+                      hitSlop={8}
+                      onPress={async () => {
+                        const ok = await confirmAction({
+                          title: 'Delete draft?',
+                          message: d.experiment.title,
+                          confirmText: 'Delete',
+                          destructive: true,
+                        });
+                        if (ok) deleteDraftMutation.mutate(d.experiment.id);
+                      }}
+                      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
                       <ThemedText type="small" style={{ color: colors.textSecondary }}>
                         Delete
                       </ThemedText>
@@ -208,12 +241,15 @@ export default function TodayScreen() {
           )}
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/new' as never)}
             style={({ pressed }) => [
               styles.newButton,
-              { backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement },
+              { backgroundColor: colors.tint, opacity: pressed ? 0.85 : 1 },
             ]}>
-            <ThemedText type="smallBold">+ New experiment</ThemedText>
+            <ThemedText type="smallBold" style={{ color: colors.onTint }}>
+              + New experiment
+            </ThemedText>
           </Pressable>
         </ScrollView>
       </SafeAreaView>

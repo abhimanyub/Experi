@@ -26,15 +26,25 @@ export function ChipRow<V extends string>({
       {options.map((o) => (
         <Pressable
           key={o.value}
+          accessibilityRole="button"
+          accessibilityState={{ selected: o.value === value }}
+          hitSlop={{ top: 4, bottom: 4 }}
           onPress={() => onChange(o.value)}
-          style={[
+          style={({ pressed }) => [
             styles.chip,
             {
               backgroundColor:
-                o.value === value ? colors.backgroundSelected : colors.backgroundElement,
+                o.value === value
+                  ? colors.backgroundSelected
+                  : pressed
+                    ? colors.backgroundSelected
+                    : colors.backgroundElement,
+              opacity: pressed && o.value !== value ? 0.7 : 1,
             },
           ]}>
-          <ThemedText type="small">{o.label}</ThemedText>
+          <ThemedText type="small" maxFontSizeMultiplier={1.6}>
+            {o.label}
+          </ThemedText>
         </Pressable>
       ))}
     </View>
@@ -48,8 +58,10 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   chip: {
-    paddingHorizontal: Spacing.two,
+    paddingHorizontal: Spacing.two + 2,
     paddingVertical: Spacing.one,
     borderRadius: Spacing.two,
+    minHeight: 36,
+    justifyContent: 'center',
   },
 });

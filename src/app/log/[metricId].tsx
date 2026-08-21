@@ -9,9 +9,10 @@ import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput } from
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ChipRow } from '@/components/wizard/chips';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Fonts, Spacing } from '@/constants/theme';
 import { getMetric, logObservation } from '@/db/repo';
 import { CurrencyConfig, DurationConfig, NumericConfig } from '@/domain/types';
+import { successFeedback } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function LogSheet() {
@@ -40,6 +41,7 @@ export default function LogSheet() {
       });
     },
     onSuccess: () => {
+      successFeedback();
       queryClient.invalidateQueries({ queryKey: ['active-experiments'] });
       router.back();
     },
@@ -103,6 +105,7 @@ export default function LogSheet() {
           </ThemedText>
         )}
         <Pressable
+          accessibilityRole="button"
           disabled={!valid || save.isPending}
           onPress={() => save.mutate(value)}
           style={({ pressed }) => [
@@ -112,7 +115,7 @@ export default function LogSheet() {
               opacity: valid ? 1 : 0.4,
             },
           ]}>
-          <ThemedText type="smallBold">Save</ThemedText>
+          <ThemedText type="smallBold">{save.isPending ? 'Saving…' : 'Save'}</ThemedText>
         </Pressable>
       </ThemedView>
     </KeyboardAvoidingView>

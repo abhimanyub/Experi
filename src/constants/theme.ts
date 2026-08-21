@@ -9,7 +9,10 @@ import { Platform } from 'react-native';
 
 // Red Glass palette: warm paper in light mode, warm ink in dark
 // (mode follows the system setting via useColorScheme). Brand red is the
-// interactive tint; success/warning keep viz-family hues.
+// interactive tint; success/warning are tuned per mode for WCAG AA text
+// contrast (bright chart-family hues live in constants/viz.ts instead).
+// onTint flips to near-ink in dark mode: dark text on a bright fill keeps
+// button labels legible where white would drop below 3.5:1.
 export const Colors = {
   light: {
     text: '#1E1818',
@@ -20,9 +23,9 @@ export const Colors = {
     tint: '#C8353B',
     tintSoft: '#FBE5E4',
     onTint: '#ffffff',
-    success: '#1baf7a',
+    success: '#0B7A52',
     successSoft: '#E0F5EC',
-    warning: '#c98500',
+    warning: '#8A5F00',
     warningSoft: '#FBF0DA',
   },
   dark: {
@@ -33,10 +36,10 @@ export const Colors = {
     textSecondary: '#AB9E9A',
     tint: '#E85C63',
     tintSoft: '#3A1D1F',
-    onTint: '#ffffff',
-    success: '#199e70',
+    onTint: '#171212',
+    success: '#35C08E',
     successSoft: '#123227',
-    warning: '#c98500',
+    warning: '#E3A93E',
     warningSoft: '#332A16',
   },
 } as const;

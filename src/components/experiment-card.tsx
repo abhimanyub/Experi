@@ -20,9 +20,19 @@ interface Props {
   isToday: boolean; // viewing today vs a past day on the date bar
   onLog: (metricId: string, value: number) => void;
   onMiss: (metricId: string) => void;
+  undoableMetricId?: string | null; // metric whose latest quick-log can still be taken back
+  onUndo?: () => void;
 }
 
-export function ExperimentCard({ bundle, now, isToday, onLog, onMiss }: Props) {
+export function ExperimentCard({
+  bundle,
+  now,
+  isToday,
+  onLog,
+  onMiss,
+  undoableMetricId,
+  onUndo,
+}: Props) {
   const router = useRouter();
   const colors = useTheme();
   const { experiment, activePhase, upcomingPhase, phases, metrics, todayCounts, missedCounts } =
@@ -48,7 +58,12 @@ export function ExperimentCard({ bundle, now, isToday, onLog, onMiss }: Props) {
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
-      <Pressable onPress={() => router.push(`/experiment/${experiment.id}` as never)}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${experiment.title}, ${phaseInfo}`}
+        accessibilityHint="Opens the experiment"
+        onPress={() => router.push(`/experiment/${experiment.id}` as never)}
+        style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
         <View style={styles.headerRow}>
           <View style={{ flexShrink: 1 }}>
             <ThemedText type="smallBold">
@@ -60,7 +75,10 @@ export function ExperimentCard({ bundle, now, isToday, onLog, onMiss }: Props) {
           </View>
           {scheduled.length > 0 && activePhase && (
             <View style={styles.glassCol}>
-              <GlassFill fraction={fillFraction} />
+              <GlassFill
+                fraction={fillFraction}
+                accessibilityLabel={`${doneCount} of ${scheduled.length} check-ins done`}
+              />
               {allDone && (
                 <ThemedText type="small" style={{ color: colors.success }}>
                   Full ✓
@@ -73,6 +91,7 @@ export function ExperimentCard({ bundle, now, isToday, onLog, onMiss }: Props) {
 
       {finished && (
         <Pressable
+          accessibilityRole="button"
           onPress={() => router.push(`/verdict/${experiment.id}` as never)}
           style={({ pressed }) => [
             styles.checkinButton,
@@ -86,6 +105,7 @@ export function ExperimentCard({ bundle, now, isToday, onLog, onMiss }: Props) {
 
       {isToday && activePhase && !allDone && scheduled.length > 0 && (
         <Pressable
+          accessibilityRole="button"
           onPress={() => router.push(`/checkin/${experiment.id}` as never)}
           style={({ pressed }) => [
             styles.checkinButton,
@@ -109,6 +129,7 @@ export function ExperimentCard({ bundle, now, isToday, onLog, onMiss }: Props) {
               onMiss={
                 !isToday && (todayCounts[m.id] ?? 0) === 0 ? () => onMiss(m.id) : undefined
               }
+              onUndo={undoableMetricId === m.id ? onUndo : undefined}
             />
           ))}
         </View>

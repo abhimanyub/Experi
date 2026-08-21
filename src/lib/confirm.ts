@@ -3,6 +3,16 @@
 
 import { Alert, Platform } from 'react-native';
 
+/** Error surface: native Alert, window.alert on web (RN-web Alert is a no-op). */
+export function showError(title: string, message?: string): void {
+  if (Platform.OS === 'web') {
+    // eslint-disable-next-line no-alert
+    window.alert(`${title}${message ? `\n\n${message}` : ''}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
 export function confirmAction(params: {
   title: string;
   message?: string;

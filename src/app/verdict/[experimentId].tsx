@@ -1,10 +1,11 @@
 // Verdict flow (spec §7.4, mandatory): per-metric comparison pages →
 // outcome picker → written conclusion → adopt? → complete.
-// The app's job is to make lying to yourself effortful.
+// The app's job is to make lying to yourself effortful — but never to trap
+// you: Close is always available, and typed work warns before discarding.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,7 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, ZoomIn } from 'react-native-reanimated';
 
 import { ConfettiBurst } from '@/components/confetti';
 import { DotChart } from '@/components/dot-chart';
@@ -26,7 +27,8 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { getExperimentDetail, saveVerdict } from '@/db/repo';
 import { VerdictOutcome } from '@/domain/types';
 import { compareMetricAcrossPhases, comparisonValue, contextLine } from '@/domain/verdict-math';
-import { stampFeedback, successFeedback } from '@/lib/haptics';
+import { confirmAction } from '@/lib/confirm';
+import { stampFeedback, successFeedback, tapFeedback } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
 
 const OUTCOMES: { value: VerdictOutcome; label: string; blurb: string }[] = [
@@ -47,6 +49,7 @@ const OUTCOMES: { value: VerdictOutcome; label: string; blurb: string }[] = [
 export default function VerdictFlow() {
   const { experimentId } = useLocalSearchParams<{ experimentId: string }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const colors = useTheme();
   const queryClient = useQueryClient();
   const { width: windowWidth } = useWindowDimensions();
@@ -64,6 +67,33 @@ export default function VerdictFlow() {
     queryFn: () => getExperimentDetail(experimentId),
   });
 
+  // A half-written verdict shouldn't vanish on an accidental dismiss.
+  const dirtyRef = useRef(false);
+  dirtyRef.current = !saved && (outcome !== null || conclusion.trim().length > 0);
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      if (!dirtyRef.current) return;
+      e.preventDefault();
+      confirmAction({
+        title: 'Discard this verdict?',
+        message: 'Your outcome and conclusion so far will be lost.',
+        confirmText: 'Discard',
+        destructive: true,
+      }).then((ok) => {
+        if (ok) navigation.dispatch(e.data.action);
+      });
+    });
+    return () => sub();
+  }, [navigation]);
+
+  // Two-beat stamp: heavy thud fires on save; the success chime lands as the
+  // ink settles. Timer is cleaned up if the screen unmounts first.
+  useEffect(() => {
+    if (!saved) return;
+    const timer = setTimeout(successFeedback, 350);
+    return () => clearTimeout(timer);
+  }, [saved]);
+
   const save = useMutation({
     mutationFn: () =>
       saveVerdict({
@@ -77,17 +107,42 @@ export default function VerdictFlow() {
       queryClient.invalidateQueries();
       setSaved(true);
       stampFeedback();
-      setTimeout(successFeedback, 350);
     },
   });
 
-  if (!detail) return <ThemedView style={styles.container} />;
+  // fullScreenModal has no swipe-to-dismiss and no back chevron — an explicit
+  // Close keeps the flow escapable before the verdict is sealed.
+  const screenOptions = (
+    <Stack.Screen
+      options={{
+        headerLeft: () => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={12}
+            onPress={() => router.back()}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+            <ThemedText type="link" style={{ color: colors.tint }}>
+              Close
+            </ThemedText>
+          </Pressable>
+        ),
+      }}
+    />
+  );
+
+  if (!detail) {
+    return (
+      <ThemedView style={styles.container}>{screenOptions}</ThemedView>
+    );
+  }
   const { experiment, phases, metrics, observations } = detail;
   const chartWidth = Math.min(windowWidth, MaxContentWidth) - Spacing.three * 4;
 
   if (saved) {
     return (
       <ThemedView style={[styles.container, styles.centerAll]}>
+        {screenOptions}
         <ConfettiBurst />
         <Animated.View entering={ZoomIn.springify().damping(9)}>
           <VerdictStamp outcome={outcome ?? 'inconclusive'} size="large" />
@@ -97,8 +152,12 @@ export default function VerdictFlow() {
           "{experiment.title}" is archived in History.
         </ThemedText>
         <Pressable
+          accessibilityRole="button"
           onPress={() => router.back()}
-          style={[styles.primaryButton, { backgroundColor: colors.tint }]}>
+          style={({ pressed }) => [
+            styles.primaryButton,
+            { backgroundColor: colors.tint, opacity: pressed ? 0.85 : 1 },
+          ]}>
           <ThemedText type="smallBold" style={{ color: colors.onTint }}>
             Done
           </ThemedText>
@@ -117,62 +176,78 @@ export default function VerdictFlow() {
     const withData = cmp.phases.filter((s) => s.n > 0);
     return (
       <ThemedView style={styles.container}>
+        {screenOptions}
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="small" style={{ color: colors.textSecondary }}>
-            Metric {metricIndex + 1} of {metrics.length}
-          </ThemedText>
-          <ThemedText type="subtitle">{metric.name}</ThemedText>
+          <Animated.View
+            key={metricIndex}
+            entering={FadeIn.duration(180)}
+            exiting={FadeOut.duration(120)}
+            style={{ gap: Spacing.two }}>
+            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              Metric {metricIndex + 1} of {metrics.length}
+            </ThemedText>
+            <ThemedText type="subtitle">{metric.name}</ThemedText>
 
-          {experiment.baselineSkipped && (
-            <ThemedView
-              type="backgroundElement"
-              style={[styles.card, { backgroundColor: colors.warningSoft }]}>
-              <ThemedText type="small" style={{ color: colors.warning }}>
-                ⚠️ Baseline was skipped — there is no before-picture. Weigh this comparison
-                accordingly.
+            {experiment.baselineSkipped && (
+              <ThemedView
+                type="backgroundElement"
+                style={[styles.card, { backgroundColor: colors.warningSoft }]}>
+                <ThemedText type="small" style={{ color: colors.warning }}>
+                  ⚠️ Baseline was skipped — there is no before-picture. Weigh this comparison
+                  accordingly.
+                </ThemedText>
+              </ThemedView>
+            )}
+
+            <ThemedView type="backgroundElement" style={styles.card}>
+              <DotChart
+                metric={metric}
+                phases={phases}
+                observations={observations}
+                width={chartWidth}
+              />
+              <View style={styles.pillRow}>
+                {withData.map((s) => (
+                  <View
+                    key={s.phaseId}
+                    style={[styles.pill, { backgroundColor: colors.backgroundSelected }]}>
+                    <ThemedText type="small">
+                      {s.label}: {comparisonValue(metric, s) ?? '—'}
+                      {metric.type === 'boolean' ? '%' : ''}
+                    </ThemedText>
+                    <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                      n={s.n}
+                      {s.nFlagged > 0 ? ` · ⚑${s.nFlagged}` : ''}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+              <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                {contextLine(metric, cmp)}
               </ThemedText>
             </ThemedView>
-          )}
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <DotChart metric={metric} phases={phases} observations={observations} width={chartWidth} />
-            <View style={styles.pillRow}>
-              {withData.map((s) => (
-                <View
-                  key={s.phaseId}
-                  style={[styles.pill, { backgroundColor: colors.backgroundSelected }]}>
-                  <ThemedText type="small">
-                    {s.label}: {comparisonValue(metric, s) ?? '—'}
-                    {metric.type === 'boolean' ? '%' : ''}
-                  </ThemedText>
+            {cmp.totalFlagged > 0 && (
+              <ThemedView type="backgroundElement" style={[styles.card, styles.toggleRow]}>
+                <View style={{ flexShrink: 1 }}>
+                  <ThemedText type="smallBold">Exclude flagged observations</ThemedText>
                   <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                    n={s.n}
-                    {s.nFlagged > 0 ? ` · ⚑${s.nFlagged}` : ''}
+                    {cmp.totalFlagged} observation{cmp.totalFlagged === 1 ? '' : 's'} overlap
+                    confounders.
                   </ThemedText>
                 </View>
-              ))}
-            </View>
-            <ThemedText type="small" style={{ color: colors.textSecondary }}>
-              {contextLine(metric, cmp)}
-            </ThemedText>
-          </ThemedView>
-
-          {cmp.totalFlagged > 0 && (
-            <ThemedView type="backgroundElement" style={[styles.card, styles.toggleRow]}>
-              <View style={{ flexShrink: 1 }}>
-                <ThemedText type="smallBold">Exclude flagged observations</ThemedText>
-                <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                  {cmp.totalFlagged} observation{cmp.totalFlagged === 1 ? '' : 's'} overlap
-                  confounders.
-                </ThemedText>
-              </View>
-              <Switch value={excludeFlagged} onValueChange={setExcludeFlagged} />
-            </ThemedView>
-          )}
+                <Switch value={excludeFlagged} onValueChange={setExcludeFlagged} />
+              </ThemedView>
+            )}
+          </Animated.View>
         </ScrollView>
         <View style={styles.footer}>
           {metricIndex > 0 ? (
-            <Pressable onPress={() => setMetricIndex((i) => i - 1)}>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => setMetricIndex((i) => i - 1)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
                 ← Back
               </ThemedText>
@@ -181,10 +256,14 @@ export default function VerdictFlow() {
             <View />
           )}
           <Pressable
+            accessibilityRole="button"
             onPress={() =>
               metricIndex + 1 < metrics.length ? setMetricIndex((i) => i + 1) : setOnDecision(true)
             }
-            style={[styles.nextButton, { backgroundColor: colors.tint }]}>
+            style={({ pressed }) => [
+              styles.nextButton,
+              { backgroundColor: colors.tint, opacity: pressed ? 0.85 : 1 },
+            ]}>
             <ThemedText type="smallBold" style={{ color: colors.onTint }}>
               {metricIndex + 1 < metrics.length ? 'Next metric' : 'To the verdict'}
             </ThemedText>
@@ -200,6 +279,7 @@ export default function VerdictFlow() {
 
   return (
     <ThemedView style={styles.container}>
+      {screenOptions}
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Animated.View entering={FadeInDown} style={{ gap: Spacing.two }}>
           <ThemedText type="subtitle">The verdict</ThemedText>
@@ -214,15 +294,27 @@ export default function VerdictFlow() {
           {OUTCOMES.map((o) => (
             <Pressable
               key={o.value}
-              onPress={() => setOutcome(o.value)}
-              style={[
+              accessibilityRole="button"
+              accessibilityState={{ selected: outcome === o.value }}
+              accessibilityLabel={`${o.label}. ${o.blurb}`}
+              onPress={() => {
+                tapFeedback();
+                setOutcome(o.value);
+              }}
+              style={({ pressed }) => [
                 styles.card,
                 {
                   backgroundColor:
-                    outcome === o.value ? colors.tintSoft : colors.backgroundElement,
+                    outcome === o.value
+                      ? colors.tintSoft
+                      : pressed
+                        ? colors.backgroundSelected
+                        : colors.backgroundElement,
                 },
               ]}>
-              <ThemedText type="smallBold" style={outcome === o.value ? { color: colors.tint } : undefined}>
+              <ThemedText
+                type="smallBold"
+                style={outcome === o.value ? { color: colors.tint } : undefined}>
                 {o.label}
               </ThemedText>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
@@ -240,6 +332,7 @@ export default function VerdictFlow() {
               onChangeText={setConclusion}
               placeholder="What did you learn? What would you tell someone who asks whether this worked?"
               placeholderTextColor={colors.textSecondary}
+              accessibilityLabel="Conclusion"
               style={[styles.conclusionInput, { color: colors.text }]}
               multiline
             />
@@ -264,17 +357,25 @@ export default function VerdictFlow() {
           />
 
           <Pressable
+            accessibilityRole="button"
             disabled={!canSave || save.isPending}
             onPress={() => save.mutate()}
-            style={[
+            style={({ pressed }) => [
               styles.primaryButton,
-              { backgroundColor: colors.tint, opacity: canSave ? 1 : 0.4, marginTop: Spacing.three },
+              {
+                backgroundColor: colors.tint,
+                opacity: !canSave ? 0.4 : pressed ? 0.85 : 1,
+                marginTop: Spacing.three,
+              },
             ]}>
             <ThemedText type="smallBold" style={{ color: colors.onTint }}>
               {save.isPending ? 'Archiving…' : 'Seal the verdict'}
             </ThemedText>
           </Pressable>
-          <Pressable onPress={() => setOnDecision(false)} style={styles.backLink}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setOnDecision(false)}
+            style={({ pressed }) => [styles.backLink, { opacity: pressed ? 0.6 : 1 }]}>
             <ThemedText type="small" style={{ color: colors.textSecondary }}>
               ← Back to the data
             </ThemedText>
@@ -331,6 +432,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.three,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   conclusionBox: {
     borderRadius: Spacing.three,
@@ -341,13 +444,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     fontSize: 16,
   },
-  bigBadge: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   primaryButton: {
     alignItems: 'center',
     paddingVertical: Spacing.three,
@@ -357,5 +453,7 @@ const styles = StyleSheet.create({
   backLink: {
     alignItems: 'center',
     paddingVertical: Spacing.two,
+    minHeight: 44,
+    justifyContent: 'center',
   },
 });

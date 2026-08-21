@@ -48,17 +48,36 @@ export function PhaseEditor({
               placeholderTextColor={colors.textSecondary}
               style={[styles.labelInput, { color: colors.text }]}
             />
-            <Pressable onPress={() => move(i, -1)} disabled={i === 0}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Move ${p.label || `phase ${i + 1}`} up`}
+              accessibilityState={{ disabled: i === 0 }}
+              hitSlop={12}
+              onPress={() => move(i, -1)}
+              disabled={i === 0}
+              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
               <ThemedText type="small" style={{ opacity: i === 0 ? 0.3 : 1 }}>
                 ↑
               </ThemedText>
             </Pressable>
-            <Pressable onPress={() => move(i, 1)} disabled={i === phases.length - 1}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Move ${p.label || `phase ${i + 1}`} down`}
+              accessibilityState={{ disabled: i === phases.length - 1 }}
+              hitSlop={12}
+              onPress={() => move(i, 1)}
+              disabled={i === phases.length - 1}
+              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
               <ThemedText type="small" style={{ opacity: i === phases.length - 1 ? 0.3 : 1 }}>
                 ↓
               </ThemedText>
             </Pressable>
-            <Pressable onPress={() => onChange(phases.filter((_, j) => j !== i))}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${p.label || `phase ${i + 1}`}`}
+              hitSlop={12}
+              onPress={() => onChange(phases.filter((_, j) => j !== i))}
+              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
                 Remove
               </ThemedText>
@@ -95,10 +114,14 @@ export function PhaseEditor({
       ))}
 
       <Pressable
+        accessibilityRole="button"
         onPress={() =>
           onChange([...phases, { type: 'intervention', label: '', plannedDays: 7 }])
         }
-        style={[styles.addButton, { backgroundColor: colors.backgroundElement }]}>
+        style={({ pressed }) => [
+          styles.addButton,
+          { backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement },
+        ]}>
         <ThemedText type="smallBold">+ Add phase</ThemedText>
       </Pressable>
     </View>
@@ -138,5 +161,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.two,
     borderRadius: Spacing.three,
+    minHeight: 44,
+    justifyContent: 'center',
   },
 });

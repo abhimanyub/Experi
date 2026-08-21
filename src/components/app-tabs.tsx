@@ -7,9 +7,10 @@ export default function AppTabs() {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
 
+  // No backgroundColor override: the system supplies the tab bar material
+  // (Liquid Glass on iOS 26, blur earlier) and content scrolls under it.
   return (
     <NativeTabs
-      backgroundColor={colors.background}
       indicatorColor={colors.backgroundElement}
       labelStyle={{ selected: { color: colors.text } }}>
       <NativeTabs.Trigger name="index">

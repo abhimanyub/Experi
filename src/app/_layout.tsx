@@ -1,14 +1,31 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { Text, useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme } from 'react-native';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { Spacing } from '@/constants/theme';
 import { useDbReady } from '@/db/use-db-ready';
+import { showError } from '@/lib/confirm';
+import { errorFeedback } from '@/lib/haptics';
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient();
+// Every mutation failure surfaces here unless a mutation handles it closer to
+// the action — a write must never fail silently (spec: no confetti over lost data).
+const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      errorFeedback();
+      showError(
+        'That didn’t save',
+        error instanceof Error ? error.message : 'Something went wrong — please try again.'
+      );
+    },
+  }),
+});
 
 function useNotificationDeepLink() {
   const router = useRouter();
@@ -32,9 +49,16 @@ export default function RootLayout() {
 
   if (error) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Text>Migration failed: {error.message}</Text>
-      </View>
+      <ThemedView style={styles.errorScreen}>
+        <ThemedText type="headline">Something broke on startup</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.errorDetail}>
+          {error.message}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.errorDetail}>
+          Your data is untouched. Force-quit and reopen the app; if this keeps happening,
+          reinstalling clears the local database.
+        </ThemedText>
+      </ThemedView>
     );
   }
   if (!success) return null; // splash still covering
@@ -75,3 +99,16 @@ export default function RootLayout() {
     </QueryClientProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  errorScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+    gap: Spacing.two,
+  },
+  errorDetail: {
+    textAlign: 'center',
+  },
+});

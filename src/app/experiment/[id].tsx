@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 
 import { DotChart } from '@/components/dot-chart';
 import { PhaseTimeline } from '@/components/phase-timeline';
@@ -30,6 +30,8 @@ export default function ExperimentDetailScreen() {
   const queryClient = useQueryClient();
   const { width: windowWidth } = useWindowDimensions();
   const [showAllObservations, setShowAllObservations] = useState(false);
+  const [abandonOpen, setAbandonOpen] = useState(false);
+  const [abandonReason, setAbandonReason] = useState('');
   const now = Date.now();
 
   const { data: detail } = useQuery({
@@ -84,24 +86,6 @@ export default function ExperimentDetailScreen() {
     if (ok) endEarly.mutate();
   };
 
-  const confirmAbandon = () => {
-    Alert.prompt?.(
-      'Abandon experiment',
-      'One-line reason (required):',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Abandon',
-          style: 'destructive',
-          onPress: (reason?: string) => {
-            if (reason?.trim()) abandon.mutate(reason.trim());
-          },
-        },
-      ],
-      'plain-text'
-    );
-  };
-
   const shownObservations = showAllObservations ? [...observations].reverse() : [...observations].reverse().slice(0, 10);
   const metricName = (metricId: string) => metrics.find((m) => m.id === metricId)?.name ?? '?';
 
@@ -137,8 +121,12 @@ export default function ExperimentDetailScreen() {
         {/* verdict entry (all phases done, still active) */}
         {experiment.status === 'active' && !active && (
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push(`/verdict/${experiment.id}` as never)}
-            style={[styles.verdictButton, { backgroundColor: colors.success }]}>
+            style={({ pressed }) => [
+              styles.verdictButton,
+              { backgroundColor: colors.success, opacity: pressed ? 0.85 : 1 },
+            ]}>
             <ThemedText type="smallBold" style={{ color: colors.onTint }}>
               Write the verdict
             </ThemedText>
@@ -154,7 +142,11 @@ export default function ExperimentDetailScreen() {
                 : 'All phases complete'}
             </ThemedText>
             {active && (
-              <Pressable onPress={confirmEndEarly}>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={confirmEndEarly}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
                 <ThemedText type="small" style={{ color: colors.textSecondary }}>
                   End early
                 </ThemedText>
@@ -227,7 +219,11 @@ export default function ExperimentDetailScreen() {
         <ThemedView type="backgroundElement" style={styles.card}>
           <View style={styles.rowBetween}>
             <ThemedText type="smallBold">Confounders</ThemedText>
-            <Pressable onPress={() => router.push(`/confounder/${experiment.id}` as never)}>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={12}
+              onPress={() => router.push(`/confounder/${experiment.id}` as never)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
                 + Something happened
               </ThemedText>
@@ -282,6 +278,9 @@ export default function ExperimentDetailScreen() {
                 </View>
               </View>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Delete observation, ${metricName(o.metricId)}`}
+                hitSlop={12}
                 onPress={async () => {
                   const ok = await confirmAction({
                     title: 'Delete observation?',
@@ -289,7 +288,8 @@ export default function ExperimentDetailScreen() {
                     destructive: true,
                   });
                   if (ok) removeObservation.mutate(o.id);
-                }}>
+                }}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
                 <ThemedText type="small" style={{ color: colors.textSecondary }}>
                   ✕
                 </ThemedText>
@@ -297,7 +297,11 @@ export default function ExperimentDetailScreen() {
             </View>
           ))}
           {observations.length > 10 && (
-            <Pressable onPress={() => setShowAllObservations((s) => !s)}>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => setShowAllObservations((s) => !s)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
               <ThemedText type="small" style={{ color: colors.textSecondary }}>
                 {showAllObservations ? 'Show fewer' : `Show all ${observations.length}`}
               </ThemedText>
@@ -305,13 +309,63 @@ export default function ExperimentDetailScreen() {
           )}
         </ThemedView>
 
-        {/* abandon */}
-        {experiment.status === 'active' && (
-          <Pressable onPress={confirmAbandon} style={styles.abandonButton}>
+        {/* abandon — inline reason entry works on every platform
+            (Alert.prompt is iOS-only and silently dead elsewhere) */}
+        {experiment.status === 'active' && !abandonOpen && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setAbandonOpen(true)}
+            style={({ pressed }) => [styles.abandonButton, { opacity: pressed ? 0.6 : 1 }]}>
             <ThemedText type="small" style={{ color: colors.textSecondary }}>
               Abandon experiment…
             </ThemedText>
           </Pressable>
+        )}
+        {experiment.status === 'active' && abandonOpen && (
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">Abandon this experiment?</ThemedText>
+            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              One-line reason (required) — future you will want to know why.
+            </ThemedText>
+            <TextInput
+              autoFocus
+              value={abandonReason}
+              onChangeText={setAbandonReason}
+              placeholder="e.g. Travel wrecked the routine"
+              placeholderTextColor={colors.textSecondary}
+              accessibilityLabel="Reason for abandoning"
+              style={[styles.abandonInput, { color: colors.text }]}
+            />
+            <View style={styles.rowBetween}>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => {
+                  setAbandonOpen(false);
+                  setAbandonReason('');
+                }}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={!abandonReason.trim() || abandon.isPending}
+                onPress={() => abandon.mutate(abandonReason.trim())}
+                style={({ pressed }) => [
+                  styles.abandonConfirm,
+                  {
+                    backgroundColor: colors.tint,
+                    opacity: !abandonReason.trim() ? 0.4 : pressed ? 0.85 : 1,
+                  },
+                ]}>
+                <ThemedText type="smallBold" style={{ color: colors.onTint }}>
+                  {abandon.isPending ? 'Abandoning…' : 'Abandon'}
+                </ThemedText>
+              </Pressable>
+            </View>
+          </ThemedView>
         )}
       </ScrollView>
     </ThemedView>
@@ -367,6 +421,20 @@ const styles = StyleSheet.create({
   abandonButton: {
     alignItems: 'center',
     paddingVertical: Spacing.three,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  abandonInput: {
+    fontSize: 16,
+    minHeight: 44,
+    paddingVertical: Spacing.one,
+  },
+  abandonConfirm: {
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.three,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   verdictButton: {
     alignItems: 'center',
