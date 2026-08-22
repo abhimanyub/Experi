@@ -1,60 +1,46 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Red Glass — dark remix palette (Claude Design "Red Glass Redesign").
+ * The app is dark-only: warm near-black ground, cream text and primary
+ * buttons, ember red accent, amber streak, green success. Both scheme keys
+ * carry the same values so `useTheme` keeps working everywhere.
  */
 
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
-// Red Glass palette: warm paper in light mode, warm ink in dark
-// (mode follows the system setting via useColorScheme). Brand red is the
-// interactive tint; success/warning are tuned per mode for WCAG AA text
-// contrast (bright chart-family hues live in constants/viz.ts instead).
-// onTint flips to near-ink in dark mode: dark text on a bright fill keeps
-// button labels legible where white would drop below 3.5:1.
+const palette = {
+  text: '#F6EDE4',
+  background: '#131211',
+  backgroundElement: '#1D1B18',
+  backgroundSelected: '#2B2723',
+  textSecondary: '#A3948A',
+  textFaint: '#6E6158',
+  tint: '#E2705F',
+  tintStrong: '#E0574A',
+  tintSoft: 'rgba(224,87,74,0.12)',
+  onTint: '#17130E',
+  cream: '#F6EDE4',
+  onCream: '#17130E',
+  cardBorder: 'rgba(255,255,255,0.06)',
+  success: '#4CC38A',
+  successSoft: 'rgba(76,195,138,0.14)',
+  warning: '#FFB454',
+  warningSoft: 'rgba(255,180,84,0.12)',
+} as const;
+
 export const Colors = {
-  light: {
-    text: '#1E1818',
-    background: '#FBF7F5',
-    backgroundElement: '#F4EDEA',
-    backgroundSelected: '#EADFDA',
-    textSecondary: '#6F6360',
-    tint: '#C8353B',
-    tintSoft: '#FBE5E4',
-    onTint: '#ffffff',
-    success: '#0B7A52',
-    successSoft: '#E0F5EC',
-    warning: '#8A5F00',
-    warningSoft: '#FBF0DA',
-  },
-  dark: {
-    text: '#F5EFED',
-    background: '#171212',
-    backgroundElement: '#252020',
-    backgroundSelected: '#332B2B',
-    textSecondary: '#AB9E9A',
-    tint: '#E85C63',
-    tintSoft: '#3A1D1F',
-    onTint: '#171212',
-    success: '#35C08E',
-    successSoft: '#123227',
-    warning: '#E3A93E',
-    warningSoft: '#332A16',
-  },
+  light: palette,
+  dark: palette,
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -70,6 +56,12 @@ export const Fonts = Platform.select({
     mono: 'var(--font-mono)',
   },
 });
+
+/** Bricolage Grotesque display faces (loaded in the root layout). */
+export const Display = {
+  bold: 'BricolageGrotesque_700Bold',
+  extraBold: 'BricolageGrotesque_800ExtraBold',
+} as const;
 
 export const Spacing = {
   half: 2,

@@ -111,11 +111,14 @@ export default function LogSheet() {
           style={({ pressed }) => [
             styles.saveButton,
             {
-              backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement,
+              backgroundColor: colors.cream,
               opacity: valid ? 1 : 0.4,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
             },
           ]}>
-          <ThemedText type="smallBold">{save.isPending ? 'Saving…' : 'Save'}</ThemedText>
+          <ThemedText type="smallBold" style={{ fontSize: 16, color: colors.onCream }}>
+            {save.isPending ? 'Saving…' : 'Save'}
+          </ThemedText>
         </Pressable>
       </ThemedView>
     </KeyboardAvoidingView>
@@ -151,6 +154,6 @@ const styles = StyleSheet.create({
   saveButton: {
     alignItems: 'center',
     paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: 999,
   },
 });

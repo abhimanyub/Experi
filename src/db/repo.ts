@@ -39,6 +39,8 @@ export interface ActiveExperimentBundle {
   activePhase: Phase | null;
   upcomingPhase: Phase | null; // future-start experiments
   todayCounts: Record<string, number>; // metricId -> observations logged on the selected day
+  sparkMetric: Metric | null; // first scale/numeric metric, drives the card sparkline
+  sparkValues: number[]; // its non-missed values in time order
   missedCounts: Record<string, number>; // metricId -> missed markers on the selected day
 }
 
@@ -70,6 +72,7 @@ export async function getActiveExperiments(
   // Count in JS — observation volume is tiny (personal app).
   const countAll: Record<string, number> = {};
   const missedAll: Record<string, number> = {};
+  const valuesByMetric: Record<string, { at: number; value: number }[]> = {};
   if (metricIds.length > 0) {
     const rows = await db
       .select()
@@ -80,7 +83,11 @@ export async function getActiveExperiments(
         countAll[o.metricId] = (countAll[o.metricId] ?? 0) + 1;
         if (o.missed) missedAll[o.metricId] = (missedAll[o.metricId] ?? 0) + 1;
       }
+      if (!o.missed) {
+        (valuesByMetric[o.metricId] ??= []).push({ at: o.observedAt, value: o.value });
+      }
     }
+    for (const list of Object.values(valuesByMetric)) list.sort((a, b) => a.at - b.at);
   }
 
   return experiments.map((experiment) => {
@@ -92,6 +99,8 @@ export async function getActiveExperiments(
       todayCounts[m.id] = countAll[m.id] ?? 0;
       missedCounts[m.id] = missedAll[m.id] ?? 0;
     }
+    const sparkMetric =
+      expMetrics.find((m) => m.type === 'scale' || m.type === 'numeric') ?? null;
     return {
       experiment,
       phases: expPhases,
@@ -100,6 +109,8 @@ export async function getActiveExperiments(
       upcomingPhase: upcomingPhase(expPhases, now),
       todayCounts,
       missedCounts,
+      sparkMetric,
+      sparkValues: sparkMetric ? (valuesByMetric[sparkMetric.id] ?? []).map((v) => v.value) : [],
     };
   });
 }

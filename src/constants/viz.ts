@@ -1,9 +1,12 @@
-// Chart colors: validated categorical palette (dataviz reference instance).
-// Phase N wears categorical slot N — color follows the phase, never its rank in a filtered view.
+// Chart colors (dark remix): phase A wears the ember red, phase B the streak
+// amber, then green / pink / blue / cream. Phase N wears categorical slot N —
+// color follows the phase, never its rank in a filtered view.
+
+const remix = ['#E0574A', '#FFB454', '#4CC38A', '#D92A63', '#8FB4E8', '#F6EDE4'] as const;
 
 export const PhasePalette = {
-  light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'],
-  dark: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300'],
+  light: remix,
+  dark: remix,
 } as const;
 
 export function phaseColor(scheme: 'light' | 'dark', index: number): string {

@@ -1,8 +1,9 @@
-// New experiment wizard (M3, spec §7.3):
-// template → hypothesis → metrics → phases → review. Start now or save as draft.
+// New experiment (redesign): the five-step wizard collapsed into one
+// scrolling build sheet — template chips, a fill-in-the-blanks hypothesis,
+// the metric list, phase rows with day steppers, then Start.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigation, useRouter } from 'expo-router';
+import { Stack, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -14,73 +15,67 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import {
-  createExperiment,
-  getActiveExperiments,
-  NewMetricInput,
-  NewPhaseInput,
-} from '@/db/repo';
-import { buildAlternatingPhases } from '@/domain/phase-engine';
+import { phaseColor } from '@/constants/viz';
+import { createExperiment, getActiveExperiments, NewMetricInput, NewPhaseInput } from '@/db/repo';
 import { TEMPLATE_EMOJI } from '@/constants/archetypes';
 import { Archetype, MIN_PHASE_DAYS } from '@/domain/types';
 import { useAiDraftStore } from '@/lib/ai-draft-store';
 import { confirmAction, showError } from '@/lib/confirm';
-import { successFeedback } from '@/lib/haptics';
+import { successFeedback, tapFeedback } from '@/lib/haptics';
 import { ensureNotificationSetup, rescheduleAll } from '@/lib/notifications';
 import { ChipRow } from '@/components/wizard/chips';
 import { MetricEditor } from '@/components/wizard/metric-editor';
-import { PhaseEditor } from '@/components/wizard/phase-editor';
 import { ExperimentTemplate, TEMPLATES } from '@/templates';
 import { useTheme } from '@/hooks/use-theme';
 
-type Step = 'template' | 'basics' | 'metrics' | 'phases' | 'review';
-const STEPS: Step[] = ['template', 'basics', 'metrics', 'phases', 'review'];
-const STEP_TITLES: Record<Step, string> = {
-  template: 'Template',
-  basics: 'Hypothesis',
-  metrics: 'Metrics',
-  phases: 'Phases',
-  review: 'Review',
-};
+/** Split a legacy hypothesis back into madlib slots (AI drafts hand us prose). */
+function slotsFromHypothesis(h: string): [string, string, string] | null {
+  const m = /^I believe (.+) will (.+) as measured by (.+?)\.?$/i.exec(h.trim());
+  return m ? [m[1], m[2], m[3]] : null;
+}
 
-export default function NewExperimentWizard() {
+export default function NewExperimentSheet() {
   const router = useRouter();
   const navigation = useNavigation();
   const colors = useTheme();
   const queryClient = useQueryClient();
 
-  const [step, setStep] = useState<Step>('template');
   const [template, setTemplate] = useState<ExperimentTemplate | null>(null);
-  const [title, setTitle] = useState('');
-  const [hypothesis, setHypothesis] = useState('');
+  const [change, setChange] = useState('');
+  const [effect, setEffect] = useState('');
+  const [measure, setMeasure] = useState('');
+  const [freeHypothesis, setFreeHypothesis] = useState<string | null>(null); // AI drafts that don't parse
+  const [freeTitle, setFreeTitle] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<NewMetricInput[]>([]);
   const [phases, setPhases] = useState<NewPhaseInput[]>([]);
-  const [includeOptional, setIncludeOptional] = useState(false);
   const [aiArchetype, setAiArchetype] = useState<Archetype | null>(null);
-  const [baselineMode, setBaselineMode] = useState<'phase' | 'current'>('phase');
   const [startWhen, setStartWhen] = useState<'now' | 'tomorrow' | 'in2days'>('now');
 
-  // A swipe-down or back gesture on the modal shouldn't silently eat typed
-  // work. Saving (draft or start) sets doneRef so the guard steps aside.
+  const title =
+    freeTitle ??
+    (change.trim() ? change.trim().charAt(0).toUpperCase() + change.trim().slice(1) : '');
+  const hypothesis =
+    freeHypothesis ??
+    (change.trim() && effect.trim() && measure.trim()
+      ? `I believe ${change.trim()} will ${effect.trim()} as measured by ${measure.trim()}.`
+      : '');
+
+  // A swipe-down shouldn't silently eat typed work.
   const doneRef = useRef(false);
   const dirtyRef = useRef(false);
   dirtyRef.current =
-    !doneRef.current &&
-    (title.trim().length > 0 || hypothesis.trim().length > 0 || template !== null);
+    !doneRef.current && (change.trim().length > 0 || template !== null || freeHypothesis !== null);
   useEffect(() => {
     const sub = navigation.addListener('beforeRemove', (e) => {
-      // doneRef is checked directly: a successful save navigates back in the
-      // same tick it sets the flag, before any re-render updates dirtyRef.
       if (doneRef.current || !dirtyRef.current) return;
       e.preventDefault();
       confirmAction({
         title: 'Discard this experiment?',
-        message: 'Nothing has been saved yet. You can also save it as a draft from Review.',
+        message: 'Nothing has been saved yet. You can also save it as a draft below.',
         confirmText: 'Discard',
         destructive: true,
       }).then((ok) => {
@@ -90,21 +85,28 @@ export default function NewExperimentWizard() {
     return () => sub();
   }, [navigation]);
 
-  // Prefill from an AI draft handed over by /ai-draft, landing on review.
+  // Prefill from an AI draft handed over by /ai-draft.
   const aiDraft = useAiDraftStore((s) => s.draft);
   const clearAiDraft = useAiDraftStore((s) => s.clear);
   useEffect(() => {
     if (!aiDraft) return;
-    setTitle(aiDraft.title);
-    setHypothesis(aiDraft.hypothesis);
+    const slots = slotsFromHypothesis(aiDraft.hypothesis);
+    if (slots) {
+      setChange(slots[0]);
+      setEffect(slots[1]);
+      setMeasure(slots[2]);
+    } else {
+      setFreeHypothesis(aiDraft.hypothesis);
+    }
+    setFreeTitle(aiDraft.title);
     setMetrics(aiDraft.metrics);
     setPhases(aiDraft.phases);
     setAiArchetype(aiDraft.archetype);
-    setStep('review');
     clearAiDraft();
   }, [aiDraft, clearAiDraft]);
 
   const applyTemplate = (tpl: ExperimentTemplate) => {
+    tapFeedback();
     setTemplate(tpl);
     setMetrics(
       tpl.metrics.map((m) => ({
@@ -120,31 +122,6 @@ export default function NewExperimentWizard() {
         .filter((p) => !p.optional)
         .map((p) => ({ type: p.type, label: p.label, plannedDays: p.plannedDays }))
     );
-    setIncludeOptional(false);
-  };
-
-  const toggleOptionalPhases = () => {
-    if (!template) return;
-    const next = !includeOptional;
-    setIncludeOptional(next);
-    setPhases(
-      template.phases
-        .filter((p) => next || !p.optional)
-        .map((p) => ({ type: p.type, label: p.label, plannedDays: p.plannedDays }))
-    );
-  };
-
-  const applyAlternating = () => {
-    if (!template?.alternating) return;
-    const built = buildAlternatingPhases(
-      'tmp',
-      phases[0]?.label ?? 'A',
-      phases[1]?.label ?? 'B',
-      template.alternating.daysEach,
-      template.alternating.rounds,
-      () => 'tmp'
-    );
-    setPhases(built.map((p) => ({ type: p.type, label: p.label, plannedDays: p.plannedDays })));
   };
 
   /** 9:00 local on the chosen future morning. */
@@ -161,8 +138,8 @@ export default function NewExperimentWizard() {
       // Starting with no baseline phase records the skip (spec §4.2) — verdict shows a caveat.
       const skipBaseline = start && !phases.some((p) => p.type === 'baseline');
       await createExperiment({
-        title: title.trim(),
-        hypothesis: hypothesis.trim(),
+        title,
+        hypothesis,
         archetype: aiArchetype ?? template?.archetype ?? 'custom',
         metrics,
         phases,
@@ -171,8 +148,6 @@ export default function NewExperimentWizard() {
         skipBaseline,
         startAt: resolveStartAt(),
       });
-      // The moment reminders become real is the right moment to ask for
-      // notification permission — with the experiment as visible context.
       const wantsReminders = metrics.some(
         (m) => 'remindAt' in m.schedule && m.schedule.remindAt.length > 0
       );
@@ -205,439 +180,436 @@ export default function NewExperimentWizard() {
 
   const startWithBaselineCheck = () => {
     const hasBaseline = phases.some((p) => p.type === 'baseline');
-    // "Current state is my baseline" was an explicit choice — no nagging alert.
-    if (hasBaseline || baselineMode === 'current') {
+    if (hasBaseline) {
       create.mutate(true);
       return;
     }
     if (Platform.OS === 'web') {
-      // Alert.alert is a silent no-op on web — same warning, two choices.
       confirmAction({
         title: 'No baseline phase',
         message:
           'Without a baseline you lose your before/after comparison. The verdict will carry a caveat.',
         confirmText: 'Start anyway',
         destructive: true,
-      }).then((ok) => (ok ? create.mutate(true) : setStep('phases')));
+      }).then((ok) => ok && create.mutate(true));
       return;
     }
     Alert.alert(
       'No baseline phase',
       'Without a baseline you lose your before/after comparison. The verdict will carry a caveat.',
       [
-        { text: 'Add baseline', style: 'cancel', onPress: () => setStep('phases') },
+        { text: 'Cancel', style: 'cancel' },
         { text: 'Start anyway', style: 'destructive', onPress: () => create.mutate(true) },
       ]
     );
   };
 
-  const setBaseline = (mode: 'phase' | 'current') => {
-    setBaselineMode(mode);
-    if (mode === 'current') {
-      setPhases(phases.filter((p) => p.type !== 'baseline'));
-    } else if (!phases.some((p) => p.type === 'baseline')) {
-      setPhases([{ type: 'baseline', label: 'Baseline', plannedDays: 7 }, ...phases]);
-    }
+  const updatePhase = (i: number, patch: Partial<NewPhaseInput>) => {
+    const next = [...phases];
+    next[i] = { ...next[i], ...patch };
+    setPhases(next);
   };
 
-  const stepIndex = STEPS.indexOf(step);
-  const stepValid = (): boolean => {
-    switch (step) {
-      case 'template':
-        return template !== null;
-      case 'basics':
-        return title.trim().length > 0 && hypothesis.trim().length > 0;
-      case 'metrics':
-        return metrics.length > 0 && metrics.every((m) => m.name.trim().length > 0);
-      case 'phases':
-        return (
-          phases.length > 0 &&
-          phases.every((p) => p.label.trim().length > 0 && p.plannedDays > 0)
-        );
-      case 'review':
-        return true;
-    }
-  };
-
+  const totalDays = phases.reduce((a, p) => a + Math.max(0, p.plannedDays), 0);
   const shortPhases = phases.filter((p) => p.plannedDays > 0 && p.plannedDays < MIN_PHASE_DAYS);
+  const valid =
+    title.trim().length > 0 &&
+    hypothesis.trim().length > 0 &&
+    metrics.length > 0 &&
+    metrics.every((m) => m.name.trim().length > 0) &&
+    phases.length > 0 &&
+    phases.every((p) => p.label.trim().length > 0 && p.plannedDays > 0);
+
+  const slotStyle = [
+    styles.slot,
+    { color: colors.tint, borderBottomColor: 'rgba(224,87,74,0.6)' },
+  ];
 
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
-    <ThemedView style={{ flex: 1 }}>
-      {/* progress header */}
-      <View
-        style={styles.progressRow}
-        accessibilityRole="progressbar"
-        accessibilityLabel="Wizard progress"
-        accessibilityValue={{ min: 0, max: STEPS.length, now: stepIndex + 1 }}>
-        {STEPS.map((s, i) => (
-          <View
-            key={s}
-            style={[
-              styles.progressSegment,
-              {
-                backgroundColor: i <= stepIndex ? colors.backgroundSelected : colors.backgroundElement,
-              },
-            ]}
-          />
-        ))}
-      </View>
-      <ThemedText type="subtitle" style={styles.stepTitle}>
-        {STEP_TITLES[step]}
-      </ThemedText>
-
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Animated.View
-          key={step}
-          entering={FadeIn.duration(180)}
-          exiting={FadeOut.duration(120)}
-          style={styles.stepContent}>
-        {step === 'template' && (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/ai-draft' as never)}
-            style={({ pressed }) => [
-              styles.aiButton,
-              { backgroundColor: colors.tintSoft, opacity: pressed ? 0.7 : 1 },
-            ]}>
-            <ThemedText type="smallBold" style={{ color: colors.tint }}>
-              ✨ Draft with Claude
-            </ThemedText>
-            <ThemedText type="small" style={{ color: colors.textSecondary }}>
-              Describe your idea; get metrics, controls, and phases suggested.
-            </ThemedText>
-          </Pressable>
-        )}
-        {step === 'template' &&
-          TEMPLATES.map((tpl) => (
-            <Pressable
-              key={tpl.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: template?.key === tpl.key }}
-              onPress={() => applyTemplate(tpl)}
-              style={({ pressed }) => [
-                styles.templateRow,
-                {
-                  backgroundColor:
-                    template?.key === tpl.key || pressed
-                      ? colors.backgroundSelected
-                      : colors.backgroundElement,
-                },
-              ]}>
-              <ThemedText type="smallBold">
-                {TEMPLATE_EMOJI[tpl.key] ?? '🧪'} {tpl.title}
-              </ThemedText>
-              <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                {tpl.description} · e.g. {tpl.example}
-              </ThemedText>
-            </Pressable>
-          ))}
-
-        {step === 'basics' && (
-          <>
-            <ThemedText type="smallBold">Title</ThemedText>
-            <ThemedView type="backgroundElement" style={styles.inputBox}>
-              <TextInput
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Morning vs evening workouts"
-                placeholderTextColor={colors.textSecondary}
-                style={[styles.input, { color: colors.text }]}
-              />
-            </ThemedView>
-            <ThemedText type="smallBold" style={styles.label}>
-              Hypothesis
-            </ThemedText>
-            <ThemedView type="backgroundElement" style={styles.inputBox}>
-              <TextInput
-                value={hypothesis}
-                onChangeText={setHypothesis}
-                placeholder="I believe [change] will [effect] as measured by [metric]"
-                placeholderTextColor={colors.textSecondary}
-                style={[styles.input, { color: colors.text }]}
-                multiline
-              />
-            </ThemedView>
-            <ThemedText type="small" style={{ color: colors.textSecondary }}>
-              A good hypothesis is falsifiable. Name the change, the expected effect, and how
-              you'll measure it.
-            </ThemedText>
-          </>
-        )}
-
-        {step === 'metrics' && <MetricEditor metrics={metrics} onChange={setMetrics} />}
-
-        {step === 'phases' && (
-          <>
-            <ThemedText type="smallBold">Baseline</ThemedText>
-            <ChipRow
-              options={[
-                { value: 'phase', label: 'Track a baseline first' },
-                { value: 'current', label: 'Current state is my baseline' },
-              ]}
-              value={baselineMode}
-              onChange={setBaseline}
-            />
-            {baselineMode === 'current' && (
-              <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                You start the change on day one and compare against how life feels from here.
-                Honest, but weaker than a measured before-picture.
-              </ThemedText>
-            )}
-            {template?.phases.some((p) => p.optional) && (
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: includeOptional }}
-                onPress={toggleOptionalPhases}
-                style={({ pressed }) => [
-                  styles.optionRow,
-                  {
-                    backgroundColor: pressed
-                      ? colors.backgroundSelected
-                      : colors.backgroundElement,
-                  },
-                ]}>
-                <ThemedText type="small">
-                  {includeOptional ? '☑' : '☐'} Include optional phases (
-                  {template.phases
-                    .filter((p) => p.optional)
-                    .map((p) => p.label)
-                    .join(', ')}
-                  )
-                </ThemedText>
-              </Pressable>
-            )}
-            {template?.alternating && (
+      <ThemedView style={{ flex: 1 }}>
+        <Stack.Screen
+          options={{
+            title: '',
+            headerLeft: () => (
               <Pressable
                 accessibilityRole="button"
-                onPress={applyAlternating}
-                style={({ pressed }) => [
-                  styles.optionRow,
-                  {
-                    backgroundColor: pressed
-                      ? colors.backgroundSelected
-                      : colors.backgroundElement,
-                  },
-                ]}>
-                <ThemedText type="small">
-                  Switch to alternating A/B/A/B ({template.alternating.rounds}×
-                  {template.alternating.daysEach}d each)
+                accessibilityLabel="Close"
+                hitSlop={12}
+                onPress={() => router.back()}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                <ThemedText type="link" style={{ color: colors.tint }}>
+                  Close
                 </ThemedText>
               </Pressable>
-            )}
-            <PhaseEditor phases={phases} onChange={setPhases} />
-          </>
-        )}
+            ),
+          }}
+        />
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ThemedText type="title" style={{ fontSize: 40, lineHeight: 42 }}>
+            New{'\n'}experiment
+          </ThemedText>
+          <ThemedText type="default" style={{ color: colors.textSecondary, fontSize: 15 }}>
+            One sheet. Fill it in, start today.
+          </ThemedText>
 
-        {step === 'review' && (
-          <>
-            <ThemedView type="backgroundElement" style={styles.reviewCard}>
-              <ThemedText type="smallBold">{title}</ThemedText>
-              <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                {hypothesis}
-              </ThemedText>
-            </ThemedView>
-            <ThemedView type="backgroundElement" style={styles.reviewCard}>
-              <ThemedText type="smallBold">Metrics ({metrics.length})</ThemedText>
-              {metrics.map((m, i) => (
-                <ThemedText key={i} type="small" style={{ color: colors.textSecondary }}>
-                  {m.name} — {m.type}
-                  {'remindAt' in m.schedule
-                    ? ` · reminders ${m.schedule.remindAt.join(', ')}`
-                    : ' · on demand'}
-                </ThemedText>
-              ))}
-            </ThemedView>
-            <ThemedView type="backgroundElement" style={styles.reviewCard}>
-              <ThemedText type="smallBold">Phases</ThemedText>
-              <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                {phases.map((p) => `${p.label} ${p.plannedDays}d`).join(' → ')}
-              </ThemedText>
-              {shortPhases.length > 0 && (
-                <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                  ⚠︎ {shortPhases.length} phase(s) under {MIN_PHASE_DAYS} days — conclusions from
-                  short phases are weak.
-                </ThemedText>
-              )}
-              {!phases.some((p) => p.type === 'baseline') && (
-                <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                  {baselineMode === 'current'
-                    ? 'Using your current state as the baseline.'
-                    : '⚠︎ No baseline phase — the verdict will carry a caveat.'}
-                </ThemedText>
-              )}
-            </ThemedView>
-
-            <ThemedText type="smallBold">Starts</ThemedText>
-            <ChipRow
-              options={[
-                { value: 'now', label: 'Now' },
-                { value: 'tomorrow', label: 'Tomorrow 9:00' },
-                { value: 'in2days', label: `In 2 days` },
-              ]}
-              value={startWhen}
-              onChange={setStartWhen}
-            />
-
+          <ThemedText type="label" style={styles.section}>
+            Template
+          </ThemedText>
+          <View style={styles.chipWrap}>
             <Pressable
               accessibilityRole="button"
-              disabled={create.isPending}
-              onPress={startWithBaselineCheck}
+              onPress={() => router.push('/ai-draft' as never)}
               style={({ pressed }) => [
-                styles.primaryButton,
+                styles.tplChip,
                 {
-                  backgroundColor: pressed
-                    ? colors.backgroundSelected
-                    : colors.backgroundElement,
+                  backgroundColor: colors.tintSoft,
+                  borderColor: 'rgba(224,87,74,0.3)',
+                  transform: [{ scale: pressed ? 0.93 : 1 }],
                 },
               ]}>
-              <ThemedText type="smallBold">
-                {create.isPending
-                  ? 'Working…'
-                  : startWhen === 'now'
-                    ? 'Start experiment'
-                    : 'Schedule experiment'}
+              <ThemedText type="smallBold" style={{ color: colors.tint }}>
+                ✨ Draft with Claude
               </ThemedText>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={create.isPending}
-              onPress={() => create.mutate(false)}
-              style={({ pressed }) => [styles.secondaryButton, { opacity: pressed ? 0.6 : 1 }]}>
-              <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                Save as draft
-              </ThemedText>
-            </Pressable>
-          </>
-        )}
-        </Animated.View>
-      </ScrollView>
+            {TEMPLATES.map((tpl) => {
+              const on = template?.key === tpl.key;
+              return (
+                <Pressable
+                  key={tpl.key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => applyTemplate(tpl)}
+                  style={({ pressed }) => [
+                    styles.tplChip,
+                    {
+                      backgroundColor: on ? colors.cream : 'rgba(255,255,255,0.055)',
+                      borderColor: on ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)',
+                      transform: [{ scale: pressed ? 0.93 : 1 }],
+                    },
+                  ]}>
+                  <ThemedText
+                    type="smallBold"
+                    style={{ color: on ? colors.onCream : colors.textSecondary }}>
+                    {TEMPLATE_EMOJI[tpl.key] ?? '🧪'} {tpl.title}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
 
-      {/* nav footer */}
-      {step !== 'review' && (
-        <View style={styles.footer}>
-          {stepIndex > 0 ? (
+          <ThemedText type="label" style={styles.section}>
+            Hypothesis
+          </ThemedText>
+          <ThemedView
+            type="backgroundElement"
+            style={[styles.card, { borderColor: colors.cardBorder }]}>
+            {freeHypothesis !== null ? (
+              <TextInput
+                value={freeHypothesis}
+                onChangeText={setFreeHypothesis}
+                multiline
+                accessibilityLabel="Hypothesis"
+                style={[styles.madlibText, { color: colors.text, padding: 0 }]}
+              />
+            ) : (
+              <View style={styles.madlib}>
+                <ThemedText style={styles.madlibText}>I believe </ThemedText>
+                <TextInput
+                  value={change}
+                  onChangeText={setChange}
+                  placeholder="the change"
+                  placeholderTextColor={colors.textFaint}
+                  accessibilityLabel="The change"
+                  style={slotStyle}
+                />
+                <ThemedText style={styles.madlibText}> will </ThemedText>
+                <TextInput
+                  value={effect}
+                  onChangeText={setEffect}
+                  placeholder="the effect"
+                  placeholderTextColor={colors.textFaint}
+                  accessibilityLabel="The expected effect"
+                  style={slotStyle}
+                />
+                <ThemedText style={styles.madlibText}> as measured by </ThemedText>
+                <TextInput
+                  value={measure}
+                  onChangeText={setMeasure}
+                  placeholder="the measure"
+                  placeholderTextColor={colors.textFaint}
+                  accessibilityLabel="How you'll measure it"
+                  style={slotStyle}
+                />
+                <ThemedText style={styles.madlibText}>.</ThemedText>
+              </View>
+            )}
+          </ThemedView>
+          <ThemedText type="small" style={{ color: colors.textSecondary }}>
+            A good hypothesis is falsifiable. Name the change, the expected effect, and how you’ll
+            measure it.
+          </ThemedText>
+
+          <ThemedText type="label" style={styles.section}>
+            Metrics
+          </ThemedText>
+          <MetricEditor metrics={metrics} onChange={setMetrics} />
+
+          <ThemedText type="label" style={styles.section}>
+            Phases
+          </ThemedText>
+          <ThemedView
+            type="backgroundElement"
+            style={[styles.phaseCard, { borderColor: colors.cardBorder }]}>
+            {phases.map((p, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.phaseRow,
+                  i > 0 && { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+                ]}>
+                <View style={[styles.phaseBadge, { backgroundColor: `${phaseColor('dark', i)}26` }]}>
+                  <ThemedText type="smallBold" style={{ fontSize: 13, color: phaseColor('dark', i) }}>
+                    {String.fromCharCode(65 + i)}
+                  </ThemedText>
+                </View>
+                <TextInput
+                  value={p.label}
+                  onChangeText={(label) => updatePhase(i, { label })}
+                  placeholder="Phase label"
+                  placeholderTextColor={colors.textFaint}
+                  accessibilityLabel={`Phase ${i + 1} label`}
+                  style={[styles.phaseLabelInput, { color: colors.text }]}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Fewer days for ${p.label || `phase ${i + 1}`}`}
+                  hitSlop={6}
+                  onPress={() => updatePhase(i, { plannedDays: Math.max(1, p.plannedDays - 1) })}
+                  style={({ pressed }) => [
+                    styles.stepBtn,
+                    { backgroundColor: 'rgba(255,255,255,0.07)', transform: [{ scale: pressed ? 0.85 : 1 }] },
+                  ]}>
+                  <ThemedText type="smallBold">−</ThemedText>
+                </Pressable>
+                <ThemedText type="smallBold" style={styles.dayCount}>
+                  {p.plannedDays}d
+                </ThemedText>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`More days for ${p.label || `phase ${i + 1}`}`}
+                  hitSlop={6}
+                  onPress={() => updatePhase(i, { plannedDays: Math.min(30, p.plannedDays + 1) })}
+                  style={({ pressed }) => [
+                    styles.stepBtn,
+                    { backgroundColor: 'rgba(255,255,255,0.07)', transform: [{ scale: pressed ? 0.85 : 1 }] },
+                  ]}>
+                  <ThemedText type="smallBold">+</ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${p.label || `phase ${i + 1}`}`}
+                  hitSlop={10}
+                  onPress={() => setPhases(phases.filter((_, j) => j !== i))}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+                  <ThemedText type="small" style={{ color: colors.textFaint }}>
+                    ✕
+                  </ThemedText>
+                </Pressable>
+              </View>
+            ))}
             <Pressable
               accessibilityRole="button"
-              hitSlop={8}
-              onPress={() => setStep(STEPS[stepIndex - 1])}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-              <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                ← Back
+              onPress={() =>
+                setPhases([...phases, { type: 'intervention', label: '', plannedDays: 7 }])
+              }
+              style={({ pressed }) => [
+                styles.addPhase,
+                phases.length > 0 && { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+                { opacity: pressed ? 0.6 : 1 },
+              ]}>
+              <ThemedText type="smallBold" style={{ color: colors.tint }}>
+                + Add phase
               </ThemedText>
             </Pressable>
-          ) : (
-            <View />
+          </ThemedView>
+          {shortPhases.length > 0 && (
+            <ThemedText type="small" style={{ color: colors.warning }}>
+              ⚠︎ {shortPhases.length} phase(s) under {MIN_PHASE_DAYS} days — conclusions from short
+              phases are weak.
+            </ThemedText>
           )}
+          {!phases.some((p) => p.type === 'baseline') && phases.length > 0 && (
+            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              No baseline phase — the verdict will carry a caveat.
+            </ThemedText>
+          )}
+          {totalDays > 0 && (
+            <ThemedText
+              type="smallBold"
+              style={{ textAlign: 'center', fontSize: 13, color: colors.textFaint }}>
+              {totalDays} days total · verdict on day {totalDays}
+            </ThemedText>
+          )}
+
+          <ThemedText type="label" style={styles.section}>
+            Starts
+          </ThemedText>
+          <ChipRow
+            options={[
+              { value: 'now', label: 'Now' },
+              { value: 'tomorrow', label: 'Tomorrow 9:00' },
+              { value: 'in2days', label: 'In 2 days' },
+            ]}
+            value={startWhen}
+            onChange={setStartWhen}
+          />
+
           <Pressable
             accessibilityRole="button"
-            disabled={!stepValid()}
-            onPress={() => setStep(STEPS[stepIndex + 1])}
+            disabled={!valid || create.isPending}
+            onPress={startWithBaselineCheck}
             style={({ pressed }) => [
-              styles.nextButton,
+              styles.startButton,
               {
-                backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement,
-                opacity: stepValid() ? 1 : 0.4,
+                backgroundColor: valid ? colors.cream : 'rgba(255,255,255,0.05)',
+                transform: [{ scale: pressed && valid ? 0.94 : 1 }],
               },
             ]}>
-            <ThemedText type="smallBold">Next</ThemedText>
-          </Pressable>
-        </View>
-      )}
-      {step === 'review' && (
-        <View style={styles.footer}>
-          <Pressable
-            accessibilityRole="button"
-            hitSlop={8}
-            onPress={() => setStep('phases')}
-            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-            <ThemedText type="small" style={{ color: colors.textSecondary }}>
-              ← Back
+            <ThemedText
+              type="smallBold"
+              style={{ fontSize: 17, lineHeight: 22, color: valid ? colors.onCream : colors.textFaint }}>
+              {create.isPending
+                ? 'Working…'
+                : !valid
+                  ? 'Fill in the sheet to start'
+                  : startWhen === 'now'
+                    ? 'Start experiment →'
+                    : 'Schedule experiment →'}
             </ThemedText>
           </Pressable>
-          <View />
-        </View>
-      )}
-    </ThemedView>
+          <Pressable
+            accessibilityRole="button"
+            disabled={!valid || create.isPending}
+            onPress={() => create.mutate(false)}
+            style={({ pressed }) => [styles.draftButton, { opacity: pressed ? 0.6 : 1 }]}>
+            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+              Save as draft
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      </ThemedView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  progressRow: {
-    flexDirection: 'row',
-    gap: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
-  },
-  progressSegment: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-  },
-  stepTitle: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
-  },
   content: {
     padding: Spacing.three,
+    paddingBottom: Spacing.six,
+    gap: 10,
   },
-  stepContent: {
+  section: {
+    marginTop: Spacing.three,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
-  templateRow: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.half,
+  tplChip: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    minHeight: 40,
+    justifyContent: 'center',
   },
-  aiButton: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.half,
+  card: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
   },
-  label: {
-    marginTop: Spacing.two,
+  madlib: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
   },
-  inputBox: {
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
+  madlibText: {
+    fontSize: 20,
+    lineHeight: 34,
+    fontWeight: 500,
   },
-  input: {
-    minHeight: 44,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
+  slot: {
+    fontSize: 20,
+    lineHeight: 34,
+    fontWeight: 700,
+    borderBottomWidth: 2.5,
+    minWidth: 90,
+    paddingVertical: 0,
+    paddingHorizontal: 2,
   },
-  optionRow: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+  phaseCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
-  reviewCard: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.one,
-  },
-  primaryButton: {
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-  },
-  footer: {
+  phaseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Spacing.three,
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
   },
-  nextButton: {
-    paddingHorizontal: Spacing.four,
+  phaseBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phaseLabelInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: 600,
+    paddingVertical: Spacing.one,
+  },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayCount: {
+    width: 36,
+    textAlign: 'center',
+    fontSize: 15,
+  },
+  addPhase: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  startButton: {
+    marginTop: Spacing.three,
+    alignItems: 'center',
+    paddingVertical: 17,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  draftButton: {
+    alignItems: 'center',
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.three,
+    minHeight: 44,
+    justifyContent: 'center',
   },
 });

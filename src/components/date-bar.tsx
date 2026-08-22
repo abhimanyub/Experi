@@ -51,37 +51,47 @@ function WeekRow({
             })}
             accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(d)}
-            style={({ pressed }) => [styles.day, { opacity: pressed ? 0.6 : 1 }]}
-            hitSlop={8}>
+            style={({ pressed }) => [
+              styles.day,
+              {
+                backgroundColor: isSelected ? colors.cream : 'rgba(255,255,255,0.045)',
+                opacity: pressed ? 0.7 : 1,
+              },
+              !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.tintStrong },
+            ]}
+            hitSlop={4}>
             <ThemedText
               type="small"
               maxFontSizeMultiplier={1.4}
-              style={{ color: colors.textSecondary, fontSize: 11, letterSpacing: 1 }}>
+              style={{
+                color: isSelected ? colors.onCream : colors.textSecondary,
+                opacity: isSelected ? 0.65 : 1,
+                fontSize: 11,
+                lineHeight: 14,
+                fontWeight: 600,
+              }}>
               {date.toLocaleDateString(undefined, { weekday: 'narrow' }).toUpperCase()}
+            </ThemedText>
+            <ThemedText
+              type="smallBold"
+              maxFontSizeMultiplier={1.4}
+              style={{
+                fontSize: 15,
+                lineHeight: 19,
+                color: isSelected ? colors.onCream : colors.text,
+              }}>
+              {date.getDate()}
             </ThemedText>
             <View
               style={[
-                styles.numCircle,
-                isSelected && { backgroundColor: colors.tint },
-                !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.tint },
-              ]}>
-              <ThemedText
-                type="smallBold"
-                maxFontSizeMultiplier={1.4}
-                style={
-                  isSelected
-                    ? { color: colors.onTint }
-                    : isToday
-                      ? { color: colors.tint }
-                      : undefined
-                }>
-                {date.getDate()}
-              </ThemedText>
-            </View>
-            <View
-              style={[
                 styles.activityDot,
-                { backgroundColor: activity[d] ? colors.tint : 'transparent' },
+                {
+                  backgroundColor: activity[d]
+                    ? isSelected
+                      ? colors.onCream
+                      : colors.tintStrong
+                    : 'transparent',
+                },
               ]}
             />
           </Pressable>
@@ -163,17 +173,15 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 6,
   },
   day: {
     flex: 1,
     alignItems: 'center',
     gap: 3,
-  },
-  numCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
+    paddingVertical: 9,
+    borderRadius: 14,
+    minHeight: 44,
     justifyContent: 'center',
   },
   activityDot: {

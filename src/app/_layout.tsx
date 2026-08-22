@@ -1,9 +1,14 @@
+import {
+  BricolageGrotesque_700Bold,
+  BricolageGrotesque_800ExtraBold,
+  useFonts,
+} from '@expo-google-fonts/bricolage-grotesque';
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -39,13 +44,16 @@ function useNotificationDeepLink() {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const { success, error } = useDbReady();
+  const [fontsReady] = useFonts({
+    BricolageGrotesque_700Bold,
+    BricolageGrotesque_800ExtraBold,
+  });
   useNotificationDeepLink();
 
   useEffect(() => {
-    if (success || error) SplashScreen.hideAsync();
-  }, [success, error]);
+    if ((success && fontsReady) || error) SplashScreen.hideAsync();
+  }, [success, fontsReady, error]);
 
   if (error) {
     return (
@@ -61,11 +69,12 @@ export default function RootLayout() {
       </ThemedView>
     );
   }
-  if (!success) return null; // splash still covering
+  if (!success || !fontsReady) return null; // splash still covering
 
+  // Dark-only per the redesign; navigation chrome follows.
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={DarkTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="new" options={{ presentation: 'modal', title: 'New experiment' }} />

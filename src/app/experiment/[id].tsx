@@ -6,11 +6,13 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 
-import { DotChart } from '@/components/dot-chart';
 import { PhaseTimeline } from '@/components/phase-timeline';
+import { Sparkline } from '@/components/sparkline';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { phaseColor } from '@/constants/viz';
+import { ScaleConfig } from '@/domain/types';
 import {
   abandonExperimentById,
   deleteObservation,
@@ -94,10 +96,8 @@ export default function ExperimentDetailScreen() {
       <Stack.Screen options={{ title: experiment.title }} />
       <ScrollView contentContainerStyle={styles.content}>
         {/* hypothesis header */}
-        <ThemedView type="backgroundElement" style={styles.card}>
-          <ThemedText type="small" style={{ color: colors.textSecondary }}>
-            Hypothesis
-          </ThemedText>
+        <ThemedView type="backgroundElement" style={[styles.card, { borderColor: colors.cardBorder }]}>
+          <ThemedText type="label">Hypothesis</ThemedText>
           <ThemedText type="default">{experiment.hypothesis}</ThemedText>
           {experiment.baselineSkipped && (
             <ThemedText type="small" style={{ color: colors.warning }}>
@@ -108,7 +108,7 @@ export default function ExperimentDetailScreen() {
 
         {/* verdict (completed experiments) */}
         {verdict && (
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedView type="backgroundElement" style={[styles.card, { borderColor: colors.cardBorder }]}>
             <ThemedText type="small" style={{ color: colors.textSecondary }}>
               Verdict — {verdict.outcome}
               {verdict.willAdopt === true && ' · adopted'}
@@ -118,25 +118,10 @@ export default function ExperimentDetailScreen() {
           </ThemedView>
         )}
 
-        {/* verdict entry (all phases done, still active) */}
-        {experiment.status === 'active' && !active && (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push(`/verdict/${experiment.id}` as never)}
-            style={({ pressed }) => [
-              styles.verdictButton,
-              { backgroundColor: colors.success, opacity: pressed ? 0.85 : 1 },
-            ]}>
-            <ThemedText type="smallBold" style={{ color: colors.onTint }}>
-              Write the verdict
-            </ThemedText>
-          </Pressable>
-        )}
-
-        {/* phase timeline */}
-        <ThemedView type="backgroundElement" style={styles.card}>
+        {/* phase card */}
+        <ThemedView type="backgroundElement" style={[styles.card, { borderColor: colors.cardBorder }]}>
           <View style={styles.rowBetween}>
-            <ThemedText type="smallBold">
+            <ThemedText type="smallBold" style={{ fontSize: 15 }}>
               {active
                 ? `${active.label} — day ${actualDays(active, now) + 1} of ${active.plannedDays}`
                 : 'All phases complete'}
@@ -147,7 +132,7 @@ export default function ExperimentDetailScreen() {
                 hitSlop={12}
                 onPress={confirmEndEarly}
                 style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-                <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                <ThemedText type="smallBold" style={{ fontSize: 13, color: colors.tint }}>
                   End early
                 </ThemedText>
               </Pressable>
@@ -156,67 +141,114 @@ export default function ExperimentDetailScreen() {
           <PhaseTimeline phases={phases} now={now} />
         </ThemedView>
 
-        {/* per-metric charts */}
-        {metrics.map((m) => (
-          <ThemedView key={m.id} type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold">{m.name}</ThemedText>
-            <DotChart
-              metric={m}
-              phases={phases}
-              observations={observations}
-              width={chartWidth}
-              live={experiment.status === 'active' && active !== null}
-            />
-          </ThemedView>
-        ))}
-
-        {/* progress so far */}
-        <ThemedView type="backgroundElement" style={styles.card}>
-          <ThemedText type="smallBold">Progress so far</ThemedText>
-          {metrics.map((m) => {
-            const cmp = compareMetricAcrossPhases(m, phases, observations, { now });
-            const phasesWithData = cmp.phases.filter((s) => s.n > 0);
-            if (phasesWithData.length === 0) {
-              return (
-                <View key={m.id} style={styles.progressMetric}>
-                  <ThemedText type="small">{m.name}</ThemedText>
-                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                    No data yet.
-                  </ThemedText>
-                </View>
-              );
+        {/* per-metric charts: self-drawing sparkline + per-phase stat chips */}
+        {metrics.map((m, mi) => {
+          const cmp = compareMetricAcrossPhases(m, phases, observations, { now });
+          const phasesWithData = cmp.phases.filter((s) => s.n > 0);
+          const vals = observations
+            .filter((o) => o.metricId === m.id && !o.missed)
+            .sort((a, b) => a.observedAt - b.observedAt)
+            .map((o) => o.value);
+          let yMin = 1;
+          let yMax = 5;
+          if (m.type === 'scale') {
+            const cfg = m.config as ScaleConfig;
+            yMin = cfg.min ?? 1;
+            yMax = cfg.max ?? 5;
+          } else if (vals.length > 0) {
+            yMin = Math.min(...vals);
+            yMax = Math.max(...vals);
+            if (yMin === yMax) {
+              yMin -= 1;
+              yMax += 1;
             }
-            return (
-              <View key={m.id} style={styles.progressMetric}>
-                <ThemedText type="small">{m.name}</ThemedText>
+          }
+          return (
+            <ThemedView
+              key={m.id}
+              type="backgroundElement"
+              style={[styles.card, { borderColor: colors.cardBorder }]}>
+              <View style={styles.rowBetween}>
+                <ThemedText type="smallBold" style={{ fontSize: 15 }}>
+                  {m.name}
+                </ThemedText>
+                <ThemedText type="small" style={{ color: colors.textFaint, fontWeight: 600 }}>
+                  {m.type === 'scale' ? `${yMin}-${yMax} rating` : m.type}
+                </ThemedText>
+              </View>
+              {vals.length >= 2 ? (
+                <Sparkline
+                  values={vals}
+                  yMin={yMin}
+                  yMax={yMax}
+                  width={chartWidth}
+                  height={110}
+                  color={phaseColor('dark', mi)}
+                  accessibilityLabel={`${m.name}: ${vals.length} observations, latest ${vals[vals.length - 1]}`}
+                />
+              ) : (
+                <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                  {vals.length === 0 ? 'No observations yet.' : 'One observation — a line needs two.'}
+                </ThemedText>
+              )}
+              {phasesWithData.length > 0 && (
                 <View style={styles.progressPhases}>
                   {phasesWithData.map((s) => (
                     <View
                       key={s.phaseId}
-                      style={[styles.progressPill, { backgroundColor: colors.backgroundSelected }]}>
-                      <ThemedText type="small">
-                        {s.label}: {comparisonValue(m, s) ?? '—'}
+                      style={[styles.statChip, { backgroundColor: colors.tintSoft }]}>
+                      <ThemedText type="smallBold" style={{ fontSize: 13, color: colors.tint }}>
+                        {s.label} avg: {comparisonValue(m, s) ?? '—'}
                         {m.type === 'boolean' ? '%' : ''}
-                      </ThemedText>
-                      <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                        n={s.n}
-                        {s.nFlagged > 0 ? ` · ⚑${s.nFlagged}` : ''}
                       </ThemedText>
                     </View>
                   ))}
+                  <View style={[styles.statChip, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+                    <ThemedText type="smallBold" style={{ fontSize: 13, color: colors.textSecondary }}>
+                      n = {phasesWithData.reduce((a, s) => a + s.n, 0)}
+                    </ThemedText>
+                  </View>
                 </View>
-                {phasesWithData.length >= 2 && (
-                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
-                    {contextLine(m, cmp)}
-                  </ThemedText>
-                )}
-              </View>
-            );
-          })}
-        </ThemedView>
+              )}
+              {phasesWithData.length >= 2 && (
+                <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                  {contextLine(m, cmp)}
+                </ThemedText>
+              )}
+            </ThemedView>
+          );
+        })}
+
+        {/* actions: confounder + settle */}
+        <View style={styles.actionsRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push(`/confounder/${experiment.id}` as never)}
+            style={({ pressed }) => [
+              styles.actionOutline,
+              { borderColor: 'rgba(255,255,255,0.14)', transform: [{ scale: pressed ? 0.95 : 1 }] },
+            ]}>
+            <ThemedText type="smallBold" style={{ fontSize: 15, color: colors.textSecondary }}>
+              ⚠ Log confounder
+            </ThemedText>
+          </Pressable>
+          {experiment.status === 'active' && !active && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push(`/verdict/${experiment.id}` as never)}
+              style={({ pressed }) => [
+                styles.actionPrimary,
+                { backgroundColor: colors.cream, transform: [{ scale: pressed ? 0.95 : 1 }] },
+              ]}>
+              <ThemedText type="smallBold" style={{ fontSize: 15, color: colors.onCream }}>
+                Settle it →
+              </ThemedText>
+            </Pressable>
+          )}
+        </View>
 
         {/* confounders */}
-        <ThemedView type="backgroundElement" style={styles.card}>
+        <ThemedView type="backgroundElement" style={[styles.card, { borderColor: colors.cardBorder }]}>
           <View style={styles.rowBetween}>
             <ThemedText type="smallBold">Confounders</ThemedText>
             <Pressable
@@ -247,7 +279,7 @@ export default function ExperimentDetailScreen() {
         </ThemedView>
 
         {/* observation history */}
-        <ThemedView type="backgroundElement" style={styles.card}>
+        <ThemedView type="backgroundElement" style={[styles.card, { borderColor: colors.cardBorder }]}>
           <ThemedText type="smallBold">Observations ({observations.length})</ThemedText>
           {shownObservations.map((o) => (
             <View key={o.id} style={styles.rowBetween}>
@@ -322,7 +354,7 @@ export default function ExperimentDetailScreen() {
           </Pressable>
         )}
         {experiment.status === 'active' && abandonOpen && (
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedView type="backgroundElement" style={[styles.card, { borderColor: colors.cardBorder }]}>
             <ThemedText type="smallBold">Abandon this experiment?</ThemedText>
             <ThemedText type="small" style={{ color: colors.textSecondary }}>
               One-line reason (required) — future you will want to know why.
@@ -382,9 +414,41 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   card: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
     gap: Spacing.two,
+  },
+  statChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionOutline: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  actionPrimary: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderRadius: 999,
+    minHeight: 44,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   rowBetween: {
     flexDirection: 'row',
@@ -395,18 +459,10 @@ const styles = StyleSheet.create({
   confounderRow: {
     gap: Spacing.half,
   },
-  progressMetric: {
-    gap: Spacing.one,
-  },
   progressPhases: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.one,
-  },
-  progressPill: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
-    borderRadius: Spacing.two,
   },
   obsLine: {
     flexDirection: 'row',
@@ -435,10 +491,5 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     minHeight: 44,
     justifyContent: 'center',
-  },
-  verdictButton: {
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
   },
 });

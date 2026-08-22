@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "experi",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.abhimanyubhosale.experi",
       "supportsTablet": false,
@@ -32,11 +32,11 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FBF7F5",
+          "backgroundColor": "#131211",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 140,
           "dark": {
-            "backgroundColor": "#171212"
+            "backgroundColor": "#131211"
           }
         }
       ]

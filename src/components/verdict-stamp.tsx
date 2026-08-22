@@ -4,6 +4,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { Display } from '@/constants/theme';
 import { VerdictOutcome } from '@/domain/types';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -41,7 +42,6 @@ export function VerdictStamp({
         { borderColor: color, transform: [{ rotate: large ? '-6deg' : '-4deg' }] },
       ]}>
       <ThemedText
-        type={large ? 'subtitle' : 'small'}
         style={[styles.label, { color, fontSize: large ? 24 : 11, lineHeight: large ? 30 : 14 }]}>
         {LABELS[outcome]}
       </ThemedText>
@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   label: {
-    fontWeight: '800',
-    letterSpacing: 1.5,
+    fontFamily: Display.extraBold,
+    letterSpacing: 2,
   },
 });

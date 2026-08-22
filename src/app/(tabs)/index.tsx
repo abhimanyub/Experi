@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DateBar, startOfDay } from '@/components/date-bar';
 import { ExperimentCard } from '@/components/experiment-card';
+import { StreakEnergyBar, StreakPill } from '@/components/streak';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -19,12 +19,12 @@ import {
   startDraft,
   syncPhaseTransitions,
 } from '@/db/repo';
+import { computeStreak } from '@/domain/streak';
 import { confirmAction } from '@/lib/confirm';
 import { rescheduleAll } from '@/lib/notifications';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function TodayScreen() {
-  const router = useRouter();
   const colors = useTheme();
   const queryClient = useQueryClient();
   const now = Date.now();
@@ -64,10 +64,12 @@ export default function TodayScreen() {
     queryFn: getDraftExperiments,
   });
 
+  // A year of activity: feeds the date-bar dots AND the streak flame.
   const { data: activity = {} } = useQuery({
     queryKey: ['activity-days', bundles.length],
-    queryFn: () => getActivityDays(Date.now()),
+    queryFn: () => getActivityDays(Date.now(), 366),
   });
+  const streak = computeStreak(activity, now);
 
   // Track the latest quick-log so its row can offer Undo for a few seconds.
   const [lastLogged, setLastLogged] = useState<{ metricId: string; obsId: string } | null>(null);
@@ -142,9 +144,22 @@ export default function TodayScreen() {
           style={{ alignSelf: 'stretch' }}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>
+          {/* brand row: red orb wordmark + streak flame */}
+          <View style={styles.brandRow}>
+            <View style={styles.brandLeft}>
+              <View style={styles.orb}>
+                <View style={styles.orbHighlight} />
+              </View>
+              <ThemedText type="headline" style={{ fontSize: 17, lineHeight: 22 }}>
+                Red Glass
+              </ThemedText>
+            </View>
+            <StreakPill streak={streak} />
+          </View>
+
           <View style={styles.heading}>
             <ThemedText type="title">{isToday ? 'Today' : 'Catch up'}</ThemedText>
-            <ThemedText type="small" style={{ color: colors.textSecondary }}>
+            <ThemedText type="default" style={{ color: colors.textSecondary }}>
               {new Date(selectedDay).toLocaleDateString(undefined, {
                 weekday: 'long',
                 month: 'long',
@@ -156,7 +171,9 @@ export default function TodayScreen() {
           <DateBar now={now} selected={selectedDay} activity={activity} onSelect={setSelectedDay} />
 
           {bundles.length === 0 && !isLoading && (
-            <ThemedView type="backgroundElement" style={styles.empty}>
+            <ThemedView
+              type="backgroundElement"
+              style={[styles.empty, { borderColor: colors.cardBorder }]}>
               <ThemedText style={styles.emptyEmoji}>🥤</ThemedText>
               <ThemedText type="smallBold" style={styles.emptyQuote}>
                 “The first principle is that you must not fool yourself — and you are the easiest
@@ -166,7 +183,7 @@ export default function TodayScreen() {
                 — Richard Feynman
               </ThemedText>
               <ThemedText type="small" style={[styles.emptyHint, { color: colors.textSecondary }]}>
-                No active experiments. Start one to settle a personal debate with data.
+                No active experiments. Tap + to settle a personal debate with data.
               </ThemedText>
             </ThemedView>
           )}
@@ -184,16 +201,16 @@ export default function TodayScreen() {
             />
           ))}
 
+          {bundles.length > 0 && <StreakEnergyBar streak={streak} />}
+
           {drafts.length > 0 && (
             <>
-              <ThemedText type="smallBold" style={{ color: colors.textSecondary }}>
-                Drafts
-              </ThemedText>
+              <ThemedText type="label">Drafts</ThemedText>
               {drafts.map((d) => (
                 <ThemedView
                   key={d.experiment.id}
                   type="backgroundElement"
-                  style={styles.draftCard}>
+                  style={[styles.draftCard, { borderColor: colors.cardBorder }]}>
                   <View style={{ flexShrink: 1, gap: Spacing.half }}>
                     <ThemedText type="smallBold">{d.experiment.title}</ThemedText>
                     <ThemedText type="small" style={{ color: colors.textSecondary }}>
@@ -212,9 +229,11 @@ export default function TodayScreen() {
                       }
                       style={({ pressed }) => [
                         styles.draftButton,
-                        { backgroundColor: colors.backgroundSelected, opacity: pressed ? 0.7 : 1 },
+                        { backgroundColor: colors.cream, opacity: pressed ? 0.85 : 1 },
                       ]}>
-                      <ThemedText type="smallBold">Start</ThemedText>
+                      <ThemedText type="smallBold" style={{ color: colors.onCream }}>
+                        Start
+                      </ThemedText>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
@@ -239,18 +258,6 @@ export default function TodayScreen() {
               ))}
             </>
           )}
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/new' as never)}
-            style={({ pressed }) => [
-              styles.newButton,
-              { backgroundColor: colors.tint, opacity: pressed ? 0.85 : 1 },
-            ]}>
-            <ThemedText type="smallBold" style={{ color: colors.onTint }}>
-              + New experiment
-            </ThemedText>
-          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -270,15 +277,46 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.four,
-    paddingTop: Platform.OS === 'web' ? 72 : Spacing.three, // clear the floating web tab bar
+    paddingBottom: BottomTabInset + 96,
+    paddingTop: Platform.OS === 'web' ? Spacing.four : Spacing.three,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  orb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#C74A3D',
+    shadowColor: '#E0574A',
+    shadowOpacity: 0.5,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 0 },
+    overflow: 'hidden',
+  },
+  orbHighlight: {
+    position: 'absolute',
+    left: 4,
+    top: 3,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#E88A74',
+    opacity: 0.9,
   },
   heading: {
-    marginBottom: Spacing.one,
-    gap: Spacing.half,
+    gap: Spacing.one,
   },
   empty: {
     borderRadius: Spacing.four,
+    borderWidth: 1,
     padding: Spacing.four,
     gap: Spacing.two,
     alignItems: 'center',
@@ -294,14 +332,9 @@ const styles = StyleSheet.create({
   emptyHint: {
     marginTop: Spacing.two,
   },
-  newButton: {
-    alignSelf: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.four,
-  },
   draftCard: {
     borderRadius: Spacing.three,
+    borderWidth: 1,
     padding: Spacing.three,
     flexDirection: 'row',
     alignItems: 'center',
@@ -314,7 +347,7 @@ const styles = StyleSheet.create({
   },
   draftButton: {
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-    borderRadius: Spacing.two,
+    paddingVertical: Spacing.one + 2,
+    borderRadius: 999,
   },
 });

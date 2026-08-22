@@ -110,11 +110,14 @@ export default function ConfounderSheet() {
         style={({ pressed }) => [
           styles.saveButton,
           {
-            backgroundColor: pressed ? colors.backgroundSelected : colors.backgroundElement,
+            backgroundColor: colors.cream,
             opacity: valid ? 1 : 0.4,
+            transform: [{ scale: pressed ? 0.96 : 1 }],
           },
         ]}>
-        <ThemedText type="smallBold">Log confounder</ThemedText>
+        <ThemedText type="smallBold" style={{ fontSize: 16, color: colors.onCream }}>
+          {save.isPending ? 'Logging…' : 'Log confounder'}
+        </ThemedText>
       </Pressable>
     </ThemedView>
   );
@@ -138,6 +141,6 @@ const styles = StyleSheet.create({
   saveButton: {
     alignItems: 'center',
     paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: 999,
   },
 });

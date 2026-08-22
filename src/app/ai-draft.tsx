@@ -78,9 +78,9 @@ export default function AiDraftScreen() {
           onPress={copyPrompt}
           style={({ pressed }) => [
             styles.primaryButton,
-            { backgroundColor: colors.tint, opacity: !idea.trim() ? 0.4 : pressed ? 0.85 : 1 },
+            { backgroundColor: colors.cream, opacity: !idea.trim() ? 0.4 : 1, transform: [{ scale: pressed ? 0.96 : 1 }] },
           ]}>
-          <ThemedText type="smallBold" style={{ color: colors.onTint }}>
+          <ThemedText type="smallBold" style={{ color: colors.onCream }}>
             {copied ? 'Copied ✓' : 'Copy prompt for Claude'}
           </ThemedText>
         </Pressable>
@@ -126,9 +126,9 @@ export default function AiDraftScreen() {
           onPress={createDraft}
           style={({ pressed }) => [
             styles.primaryButton,
-            { backgroundColor: colors.tint, opacity: !pasted.trim() ? 0.4 : pressed ? 0.85 : 1 },
+            { backgroundColor: colors.cream, opacity: !pasted.trim() ? 0.4 : 1, transform: [{ scale: pressed ? 0.96 : 1 }] },
           ]}>
-          <ThemedText type="smallBold" style={{ color: colors.onTint }}>
+          <ThemedText type="smallBold" style={{ color: colors.onCream }}>
             Review in wizard
           </ThemedText>
         </Pressable>
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignItems: 'center',
     paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: 999,
     marginTop: Spacing.one,
   },
   linkButton: {

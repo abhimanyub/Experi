@@ -57,36 +57,44 @@ export default function InsightsScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
-            <ThemedText type="title">Insights</ThemedText>
+            <View style={styles.brandLeft}>
+              <View style={styles.orb}>
+                <View style={styles.orbHighlight} />
+              </View>
+              <ThemedText type="headline" style={{ fontSize: 17, lineHeight: 22 }}>
+                Red Glass
+              </ThemedText>
+            </View>
             <Pressable
               accessibilityRole="button"
               hitSlop={12}
               onPress={exportJson}
               style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-              <ThemedText type="small" style={{ color: colors.tint }}>
+              <ThemedText type="smallBold" style={{ color: colors.tint }}>
                 Export JSON
               </ThemedText>
             </Pressable>
           </View>
+          <ThemedText type="title">Insights</ThemedText>
 
           {stats && insights.length > 0 && (
             <View style={styles.statsRow}>
               {[
-                { n: stats.completed, label: 'settled' },
-                { n: stats.adopted, label: 'adopted' },
-                { n: stats.refuted, label: 'refuted' },
-                { n: stats.observations, label: 'observations' },
+                { n: stats.completed, label: 'settled', color: colors.tint },
+                { n: stats.adopted, label: 'adopted', color: colors.success },
+                { n: stats.refuted, label: 'refuted', color: colors.warning },
+                { n: stats.observations, label: 'observations', color: colors.text },
               ].map((s) => (
                 <ThemedView
                   key={s.label}
                   type="backgroundElement"
-                  style={styles.statCell}
+                  style={[styles.statCell, { borderColor: colors.cardBorder }]}
                   accessible
                   accessibilityLabel={`${s.n} ${s.label}`}>
-                  <ThemedText type="headline" style={{ color: colors.tint }}>
+                  <ThemedText type="headline" style={{ fontSize: 26, lineHeight: 31, color: s.color }}>
                     {s.n}
                   </ThemedText>
-                  <ThemedText type="small" style={{ color: colors.textSecondary }}>
+                  <ThemedText type="small" style={{ fontSize: 11.5, color: colors.textSecondary, fontWeight: 600 }}>
                     {s.label}
                   </ThemedText>
                 </ThemedView>
@@ -95,7 +103,9 @@ export default function InsightsScreen() {
           )}
 
           {insights.length === 0 && (
-            <ThemedView type="backgroundElement" style={styles.empty}>
+            <ThemedView
+              type="backgroundElement"
+              style={[styles.empty, { borderColor: colors.cardBorder }]}>
               <ThemedText style={styles.emptyEmoji}>📔</ThemedText>
               <ThemedText type="small" style={{ color: colors.textSecondary, textAlign: 'center' }}>
                 No settled experiments yet. Every verdict you seal becomes an insight here — your
@@ -107,7 +117,10 @@ export default function InsightsScreen() {
           {insights.map(({ experiment, verdict, headline }) => (
             /* The card body navigates; the footer's Clone action stays a
                sibling, not a nested pressable — VoiceOver focus stays sane. */
-            <ThemedView key={experiment.id} type="backgroundElement" style={styles.entryCard}>
+            <ThemedView
+              key={experiment.id}
+              type="backgroundElement"
+              style={[styles.entryCard, { borderColor: colors.cardBorder }]}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${experiment.title}. Opens the experiment.`}
@@ -155,8 +168,8 @@ export default function InsightsScreen() {
                   hitSlop={12}
                   onPress={() => clone.mutate(experiment.id)}
                   style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-                  <ThemedText type="small" style={{ color: colors.tint }}>
-                    Clone & re-run
+                  <ThemedText type="smallBold" style={{ color: colors.tint }}>
+                    Clone & re-run →
                   </ThemedText>
                 </Pressable>
               </View>
@@ -181,19 +194,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  orb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#C74A3D',
+    shadowColor: '#E0574A',
+    shadowOpacity: 0.5,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 0 },
+    overflow: 'hidden',
+  },
+  orbHighlight: {
+    position: 'absolute',
+    left: 4,
+    top: 3,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#E88A74',
+    opacity: 0.9,
+  },
   statsRow: {
     flexDirection: 'row',
-    gap: Spacing.one,
+    gap: Spacing.two,
   },
   statCell: {
     flex: 1,
     alignItems: 'center',
-    borderRadius: Spacing.three,
-    paddingVertical: Spacing.two,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
     gap: 0,
   },
   empty: {
     borderRadius: Spacing.four,
+    borderWidth: 1,
     padding: Spacing.four,
     alignItems: 'center',
     gap: Spacing.two,
@@ -203,8 +245,9 @@ const styles = StyleSheet.create({
     lineHeight: 60,
   },
   entryCard: {
-    borderRadius: Spacing.four,
-    padding: Spacing.three,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
     gap: Spacing.two,
   },
   entryBody: {
